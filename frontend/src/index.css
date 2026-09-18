@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+@theme {
+  /* ---- Q-FLARE Command Center palette ---- */
+
+  /* Deep forest green / dark olive backgrounds */
+  --color-forest-950: #050b08;
+  --color-forest-900: #081310;
+  --color-forest-850: #0c1a15;
+  --color-forest-800: #11241c;
+  --color-forest-700: #1a3329;
+  --color-forest-600: #26483a;
+  --color-forest-500: #35614e;
+
+  /* Emerald primary */
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+
+  /* Cyan/teal AI accent */
+  --color-ai-200: #a5f3fc;
+  --color-ai-300: #67e8f9;
+  --color-ai-400: #22d3ee;
+  --color-ai-500: #06b6d4;
+  --color-ai-600: #0891b2;
+
+  /* Amber warning */
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+
+  /* Red critical */
+  --color-critical-400: #f87171;
+  --color-critical-500: #ef4444;
+  --color-critical-600: #dc2626;
+
+  /* Typography */
+  --color-mist-50: #f8fafc;
+  --color-mist-100: #e2e8f0;
+  --color-mist-300: #cbd5e1;
+  --color-mist-500: #94a3b8;
+  --color-mist-600: #64748b;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-forest-900);
+  background-image:
+    radial-gradient(1100px 500px at 85% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
+    radial-gradient(900px 480px at -10% 15%, rgba(34, 211, 238, 0.08), transparent 60%),
+    linear-gradient(180deg, var(--color-forest-950) 0%, var(--color-forest-900) 40%, var(--color-forest-850) 100%);
+  background-attachment: fixed;
+  color: var(--color-mist-50);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: rgba(16, 185, 129, 0.35);
+}
+
+/* Thin custom scrollbar for the dark UI */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-forest-900);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-forest-600);
+  border-radius: 6px;
+  border: 2px solid var(--color-forest-900);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-emerald-600);
+}
+
+/* ---- Glassmorphism card surface ---- */
+.glass-card {
+  background: linear-gradient(160deg, rgba(26, 51, 41, 0.55) 0%, rgba(12, 26, 21, 0.55) 100%);
+  border: 1px solid rgba(53, 97, 78, 0.35);
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 0 rgba(240, 255, 250, 0.04) inset,
+    0 12px 32px -20px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-card--glow {
+  box-shadow:
+    0 1px 0 rgba(240, 255, 250, 0.05) inset,
+    0 0 40px -14px rgba(16, 185, 129, 0.45),
+    0 12px 32px -20px rgba(0, 0, 0, 0.7);
+}
+
+/* Subtle focus ring for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--color-emerald-400);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- Quantum command-center backdrop (circuit lattice + orbs) ---- */
+/*
+ * Rendered by <QuantumCircuitBackground/> as a fixed layer behind page content
+ * (z-index:-1 keeps it under normal-flow elements). Subtle by design: opacity
+ * is intentionally low so the glass cards stay legible.
+ */
+.quantum-circuit-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(53, 97, 78, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(53, 97, 78, 0.13) 1px, transparent 1px);
+  background-size: 46px 46px;
+  animation: grid-pan 70s linear infinite;
+  mask-image: radial-gradient(ellipse 95% 80% at 50% 0%, rgba(0, 0, 0, 0.9) 30%, transparent 95%);
+  -webkit-mask-image: radial-gradient(ellipse 95% 80% at 50% 0%, rgba(0, 0, 0, 0.9) 30%, transparent 95%);
+}
+
+.quantum-orb {
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 9999px;
+  filter: blur(70px);
+  animation: orb-breathe 9s ease-in-out infinite;
+}
+.quantum-orb--emerald {
+  width: 520px;
+  height: 520px;
+  top: -140px;
+  right: -120px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.14), transparent 65%);
+}
+.quantum-orb--cyan {
+  width: 460px;
+  height: 460px;
+  bottom: -160px;
+  left: -140px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.10), transparent 65%);
+  animation-delay: -4s;
+}
+
+/* Circuit trace plates (SVG paths) — a slow dash flow reads as pulses moving */
+.quantum-trace {
+  stroke-dasharray: 5 17;
+  animation: trace-flow 7s linear infinite;
+  vector-effect: non-scaling-stroke;
+}
+.quantum-trace--fast {
+  stroke-dasharray: 3 11;
+  animation-duration: 4.5s;
+}
+.quantum-node {
+  animation: node-pulse 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Live pipeline running state */
+@keyframes grid-pan {
+  to {
+    background-position: 46px 46px;
+  }
+}
+@keyframes orb-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.1);
+  }
+}
+@keyframes trace-flow {
+  to {
+    stroke-dashoffset: -352;
+  }
+}
+@keyframes node-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+@keyframes stage-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.stage-enter {
+  animation: stage-enter 0.35s ease-out both;
+}
+
+/* Emerald-native range sliders used by the objective-weight controls */
+.quantum-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--color-emerald-600), var(--color-ai-500) var(--quantum-fill, 50%), var(--color-forest-600) var(--quantum-fill, 50%));
+  outline-offset: 4px;
+}
+.quantum-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-mist-50);
+  border: 2px solid var(--color-emerald-500);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  cursor: pointer;
+}
+.quantum-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--color-mist-50);
+  border: 2px solid var(--color-emerald-500);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  cursor: pointer;
+}
+
+/* Smooth reduced-motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "@q-flare/backend",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Q-FLARE Node.js API gateway. Sits between the React command center and the AI FastAPI forecasting service + PostgreSQL.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "oxlint src tests",
+    "test": "node --test --test-force-exit --import tsx \"tests/**/*.test.ts\"",
+    "test:unit": "node --test --test-force-exit --import tsx \"tests/unit/**/*.test.ts\"",
+    "test:integration": "node --test --test-force-exit --import tsx \"tests/integration/**/*.test.ts\""
+  },
+  "keywords": [
+    "q-flare",
+    "backend",
+    "api",
+    "flood-forecasting"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.5",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@types/supertest": "^6.0.3",
+    "oxlint": "^1.81.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.21.0",
+    "typescript": "~6.0.2"
+  }
+}
