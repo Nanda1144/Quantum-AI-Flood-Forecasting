@@ -9,11 +9,13 @@ React ── REST /api ──> backend (Node/Express :3000) ──> ai-service (
                               └──> PostgreSQL (forecasts, models, optimization)
 ```
 
-It owns the **AI Analytics Dashboard** API surface, authentication/RBAC,
-validation, and rate limiting. It is the *only* consumer of the AI FastAPI
-service (`../ai-service`) and the *only* client the browser talks to — the
-frontend never reaches the FastAPI service or the database directly, so no
-secrets leave the server.
+It owns the **AI Analytics Dashboard** API surface, the **quantum optimization
+orchestration** API (`POST /api/optimization/run` and product), plus
+authentication/RBAC, validation, and rate limiting. It is the *only* consumer
+of the AI FastAPI service (`../ai-service`) and of the quantum-service
+(`../quantum-service`), and the *only* client the browser talks to — the
+frontend never reaches those services or the database directly, so no secrets
+leave the server.
 
 > **Status:** implemented. Core `ai-service` integration is live via the
 > `ForecastClient` seam; forecasts and the model registry persist to
@@ -27,7 +29,7 @@ secrets leave the server.
 | --- | --- | --- |
 | Node gateway, API surface, auth, RBAC, rate limiting | Nanda | This module |
 | Forecasting models (XGBoost / LSTM / GRU) | Navya | Implemented behind the `ForecastEngine` protocol in `../ai-service`; swapped independently of this module |
-| Quantum optimization execution | — | `../quantum-service` (out of scope here) |
+| Quantum optimization orchestration | Nanda | This module — `/api/optimization/*` pipeline, job store, fallback policy, plus the `../quantum-service` executor contract it is the only consumer of |
 
 ## Quick start
 
@@ -72,6 +74,14 @@ All responses use the shared envelope — success:
 | `GET` | `/api/ai/models/:id/metrics` | Historical evaluation scores for a version (newest first). |
 | `GET` | `/api/ai/status` | AI availability, latency, last prediction, data freshness. |
 | `POST` | `/api/optimization/from-forecast` | Create an optimization-ready reference from an existing forecast (no quantum execution here). |
+| `POST` | `/api/optimization/run` | Validate and queue a full pipeline job (202 + `jobId`); requires `operator`. |
+| `GET` | `/api/optimization/inputs` | Federated GIS candidates + planner constraints (`candidateCount`, `forecast`, `risk`). |
+| `GET` | `/api/optimization/:id` | Job summary — status, algorithm, execution mode, result headline. |
+| `GET` | `/api/optimization/jobs/:id/pipeline` | Aggregated 10-stage pipeline progress for the UI. |
+| `GET` | `/api/optimization/jobs/:id/result` | Full result document (selection, coverage, QUBO, measurements, energy history, classical benchmark). |
+| `GET` | `/api/optimization/jobs/:id/qubo` | Served QUBO document. |
+| `GET` | `/api/optimization/jobs/:id/classical` | Persisted classical reference benchmark. |
+| `GET` | `/api/optimization/jobs/:id/export` | Signed, auditable result document with benchmark disclaimer. |
 
 `GET /api/ai/models` — the registry routes CRT these records from the DB-owning
 `model_versions`/`model_metrics` tables. The gateway **never computes or
@@ -163,11 +173,65 @@ deployment/status changes are owned by the training pipeline, not this API.
 The camelCase body matches `frontend/src/types/ai.ts` verbatim, so the
 dashboard renders directly from the response without client-side translation.
 
+### Optimization orchestration
+
+`POST /api/optimization/run` is the single entry point. The body is
+**snake_case** on the wire (the frontend HTTP adapter converts from its
+camelCase model):
+
+```json
+{
+  "problem_type": "sensor_placement",
+  "candidate_count": 24,
+  "max_sensors": 6,
+  "budget_k": null,
+  "forecast_reference": "FC-20260916-422",
+  "risk_profile": "MEDIUM",
+  "execution_mode": "simulator",
+  "hardware_enabled": false,
+  "backend": "qflare_simulator_statevector",
+  "shots": 1024,
+  "layers": 2,
+  "weights": { "risk": 0.3, "populationCoverage": 0.3, "infrastructureCoverage": 0.2, "communication": 0.1, "cost": 0.1, "redundancy": 0 },
+  "normalize_weights": true,
+  "coverage_requirements": [],
+  "candidate_locations_reference": "gis://candidates/24"
+}
+```
+
+Semantic checks that need candidate geometry happen in the orchestrator, not
+the schema: at least one weight > 0, `max_sensors ≤ candidate_count`, and if a
+budget is given it must at least cover the cheapest site
+(`INFEASIBLE_BUDGET`). The job runs the 15-step pipeline (validate → inputs →
+constraint defaults → QUBO construction → Hamiltonian → classical benchmark →
+QAOA execution → measurement → decode → constraint validation → compare →
+persist), returning `QOP-…` job ids.
+
+**Fallback policy** (`OPTIMIZATION_FALLBACK_POLICY`) decides what happens when
+an executor fails: `retry_simulator` (default) falls back to the simulator for
+`aer`/`ibm_hardware` failures, `classical_only` skips the quantum step and
+completes the job against the classical reference, `error` fails the job with
+the executor's error code. Failures surfaced by the executor map to stable
+codes: `QUBO_GENERATION_FAILED`, `QAOA_EXECUTION_FAILED`, `AER_UNAVAILABLE`,
+`HARDWARE_UNAVAILABLE`, `QUANTUM_UNAVAILABLE`, `DECODING_FAILED`,
+`EXECUTION_TIMEOUT`. Job reads are **ownership-scoped**: a job is only visible
+to its owner or an admin (unknown → 404 `JOB_NOT_FOUND`, no existence leak).
+A result labelled `INVALID SOLUTION — NOT OPERATIONALLY RECOMMENDED` (invalid
+constraint validation) is never presented as a recommendation. **No quantum
+speedup is ever claimed** — every result carries
+`quantumAdvantageClaimed: false` and is always paired with the persisted
+classical reference benchmark.
+
 ### Error codes
 
 `VALIDATION_ERROR` (422), `UNAUTHORIZED` (401), `FORBIDDEN` (403),
 `AI_SERVICE_UNAVAILABLE` (503), `FORECAST_NOT_FOUND` (404),
-`MODEL_NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500).
+`MODEL_NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500),
+plus the optimization codes: `JOB_NOT_FOUND` (404), `NO_CANDIDATES` (422),
+`INVALID_OBJECTIVE_WEIGHTS` (422), `INFEASIBLE_BUDGET` (422),
+`UNSUPPORTED_PROBLEM_TYPE` (422), `QUBO_GENERATION_FAILED` (503),
+`QAOA_EXECUTION_FAILED` (503), `QUANTUM_UNAVAILABLE` (503),
+`DECODING_FAILED` (500), `EXECUTION_TIMEOUT` (500).
 
 ## Security model
 
@@ -175,9 +239,13 @@ dashboard renders directly from the response without client-side translation.
   skips enforcement only when `AUTH_ENABLED=false` is set explicitly for local
   demos.
 - **RBAC** — `authorize(role)` ranks `viewer < operator < admin`. The
-  optimization handoff requires at least `operator`.
-- **Rate limiting** — `express-rate-limit` guards all `/api` traffic and a
-  stricter limiter guards `/api/auth/login`.
+  optimization handoff and `POST /api/optimization/run` require at least
+  `operator`. Optimization job reads require `viewer` and are additionally
+  ownership-scoped (owner or admin only).
+- **Rate limiting** — `express-rate-limit` guards all `/api` traffic, a
+  stricter limiter guards `/api/auth/login`, and `optimizationRunLimiter`
+  (window × `OPTIMIZATION_RUN_LIMIT_MAX`, default 10) guards the expensive
+  `POST /api/optimization/run`.
 - **Input validation** — Zod schemas on params/query/body. Invalid input is
   rejected with 422 (`VALIDATION_ERROR`); values are never silently coerced.
   Forecast ids must match `FC-YYYYMMDD-NNN`; probabilities must be finite and
@@ -209,11 +277,16 @@ npm run lint            # oxlint
 npm run build           # tsc typecheck + emit
 ```
 
-Tests use a controllable `FakeForecastClient` and in-memory repositories, so no
-live Python service, database, or network is required. Coverage includes
-successful forecast retrieval, invalid forecasts, missing models, AI service
-unavailability, stale data, authorization failures, pagination, and the
-optimization handoff.
+Tests use a controllable `FakeForecastClient`, a `FakeQuantumServiceClient`, and
+in-memory repositories, so no live Python service, database, or network is
+required. Coverage includes successful forecast retrieval, invalid forecasts,
+missing models, AI service unavailability, stale data, authorization failures,
+pagination, the optimization handoff, and the full optimization orchestration
+surface: the 10 documented pipeline scenarios (weight/budget validation, no
+candidates, QUBO/QAOA/hardware fallbacks, decoding failure, constraint
+violation, benchmark persistence), job summaries, subresource reads, ownership
+scoping, and route-level auth/RBAC. The `../quantum-service` contract tests run
+against that FastAPI app directly (needs its own `pip install`).
 
 ## Source layout
 
@@ -224,11 +297,13 @@ src/
 ├── config.ts                 # zod-validated env config (server-side only)
 ├── envelope.ts               # shared success/error envelope + error codes
 ├── clients/ai-service.client.ts  # the ONLY coupling to the FastAPI service
+├── clients/quantum-service.client.ts  # the ONLY coupling to quantum-service
 ├── middleware/               # authenticate, authorize, validate, rate-limit, schemas, errors
 ├── repositories/             # persistence seam: memory/ + postgres/ impls
 ├── routes/                   # auth, ai, optimization routers
-├── services/                 # analytics, forecast-sync, predictions, models-comparison, models-registry, status, optimization, auth
-├── types/                    # contract.ts (FastAPI payloads) + domain.ts (frontend contract)
+├── services/                 # analytics, forecast-sync, predictions, models-comparison, models-registry, status, optimization, optimization-orchestrator, gis (candidate/constraint sources), auth
+├── lib/optimization/         # qubo.ts (QUBO build + greedy decode, mirrored by ../quantum-service)
+├── types/                    # contract.ts (FastAPI payloads) + domain.ts (frontend contract) + optimization.ts
 └── utils/errors.ts           # EnvelopeError helper
 ```
 
@@ -246,6 +321,12 @@ src/
 | `AI_SERVICE_URL` | `http://localhost:8000` | FastAPI forecasting service. |
 | `AI_REQUEST_TIMEOUT_MS` | `5000` | Timeout for AI service requests. |
 | `FRESHNESS_STALE_MS` | `90000` | Forecasts older than this are reported stale/degraded. |
+| `QUANTUM_SERVICE_URL` | `http://localhost:8100` | QUBO/QAOA FastAPI service. |
+| `QUANTUM_REQUEST_TIMEOUT_MS` | `10000` | Timeout for quantum-service requests. |
+| `OPTIMIZATION_FALLBACK_POLICY` | `retry_simulator` | Executor-failure policy: `retry_simulator` · `classical_only` · `error`. |
+| `OPTIMIZATION_EXECUTION_TIMEOUT_MS` | `120000` | Wall-clock cap on one optimization job. |
+| `OPTIMIZATION_EXHAUSTIVE_LIMIT` | `18` | Candidate cap for the exhaustive classical reference solver. |
+| `OPTIMIZATION_RUN_LIMIT_MAX` | `10` | Per-window cap on `POST /api/optimization/run`. |
 | `MODEL_SELECTION_METRIC` | `r2` | Primary metric for `POST /api/ai/models/compare` policy (`mae`, `rmse`, `r2`, `nse`, `inferenceTime`). |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window. |
 | `RATE_LIMIT_MAX` | `120` | Max requests per window per IP. |
