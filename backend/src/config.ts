@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Backend configuration, validated at startup from environment variables.
  *
  * No secrets are ever exposed to the frontend — everything below is
@@ -70,6 +77,14 @@ const envSchema = z.object({
   QUANTUM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional().default(15_000),
 
   /**
+   * Optional bearer token shared with the quantum service. When set, every
+   * `quantum-service` request carries `Authorization: Bearer <token>`, and the
+   * quantum service rejects callers that do not present it. Keep empty on
+   * loopback-only deployments.
+   */
+  QUANTUM_API_TOKEN: z.string().optional().default(''),
+
+  /**
    * Wall-clock cap on a whole optimization job. Exceeding it fails the job
    * with `EXECUTION_TIMEOUT` rather than leaving it running forever.
    */
@@ -91,6 +106,13 @@ const envSchema = z.object({
 
   /** Maximum candidate count the classical reference solver exhaustively solves. */
   OPTIMIZATION_EXHAUSTIVE_LIMIT: z.coerce.number().int().positive().optional().default(18),
+
+  /**
+   * QUBOs with at most this many variables are persisted inline in
+   * optimization_jobs.qubo; larger matrices move to the artifact store and are
+   * referenced from the job row (never embedded in JSONB rows).
+   */
+  OPTIMIZATION_QUBO_INLINE_LIMIT: z.coerce.number().int().positive().optional().default(12),
 
   /** Stricter per-window cap on the expensive POST /api/optimization/run. */
   OPTIMIZATION_RUN_LIMIT_MAX: z.coerce.number().int().positive().optional().default(10),

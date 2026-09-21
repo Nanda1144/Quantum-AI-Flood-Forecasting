@@ -1,9 +1,17 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ModelComparisonQuery, ModelComparisonResult } from '../types/ai'
-import { aiApi } from '../services/aiService'
+import { loadModelComparison } from '../services/aiService'
 
 export interface ModelComparisonState {
   data: ModelComparisonResult | null
+  isMock: boolean
   loading: boolean
   error: string | null
 }
@@ -12,13 +20,15 @@ export interface ModelComparisonState {
  * Loads the registry-backed model comparison for the current query. Every query
  * change (sort / direction / evaluation window / status) issues a fresh request
  * with the filter applied server-side; when cached rows exist they stay visible
- * while the newer fetch is in flight.
+ * while the newer fetch is in flight. When the backend is unavailable the
+ * loader returns clearly-labelled sample rows (isMock).
  */
 export function useModelComparison() {
   const [query, setQuery] = useState<ModelComparisonQuery>({})
   const [refreshKey, setRefreshKey] = useState(0)
   const [state, setState] = useState<ModelComparisonState>({
     data: null,
+    isMock: false,
     loading: true,
     error: null,
   })
@@ -27,9 +37,9 @@ export function useModelComparison() {
   const load = useCallback(async (q: ModelComparisonQuery) => {
     const id = ++requestId.current
     try {
-      const data = await aiApi.getModelsComparison(q)
+      const { result, isMock } = await loadModelComparison(q)
       if (requestId.current !== id) return
-      setState({ data, loading: false, error: null })
+      setState({ data: result, isMock, loading: false, error: null })
     } catch (error) {
       if (requestId.current !== id) return
       const message = error instanceof Error ? error.message : 'Failed to load model comparison'

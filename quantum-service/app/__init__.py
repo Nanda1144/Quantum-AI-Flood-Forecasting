@@ -1,3 +1,11 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: quantum-service | Owner: Nanda | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README:
+# no fabricated data, no invented metrics, every surrogate or fallback is
+# clearly labelled, and no quantum speedup is ever claimed.
+
 """Q-FLARE quantum-service package."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

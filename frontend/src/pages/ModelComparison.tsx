@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useModelComparison } from '../hooks/useModelComparison'
 import { ComparisonHeader } from '../components/modelComparison/ComparisonHeader'
@@ -27,7 +34,7 @@ function hasScores(row: ModelComparisonRow): boolean {
 }
 
 export function ModelComparison() {
-  const { data, loading, error, query, updateQuery, reset, refetch } = useModelComparison()
+  const { data, isMock, loading, error, query, updateQuery, reset, refetch } = useModelComparison()
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
@@ -115,6 +122,15 @@ export function ModelComparison() {
       aria-busy={loading}
     >
       <div className="mx-auto max-w-[1440px] space-y-5">
+        {/* ---- Sample-data badge (backend unavailable, clearly flagged) ---- */}
+        {isMock && (
+          <StateBanner
+            kind="demo"
+            title="Sample Data Mode"
+            message="Showing sample data. Connect the backend API for live model registry rows."
+          />
+        )}
+
         {/* ---- Loading (first paint only) ---- */}
         {loading && !data && <ComparisonSkeleton />}
 

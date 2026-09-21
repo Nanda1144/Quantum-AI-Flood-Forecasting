@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * HTTP client for the Quantum FastAPI service (`../quantum-service`).
  *
  * This is the ONLY place the orchestrator couples to the quantum stack. It
@@ -54,10 +61,17 @@ export interface OptimizeQaoaInput {
 
 export interface OptimizeAccepted {
   executionId: string
+  /** The quantum service's job id for the accepted submission (persistence layer). */
+  jobId?: string
 }
+
+/** Lifecycle statuses the quantum service persists per job. */
+export type QuantumLifecycleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'invalid'
 
 export interface QuantumExecutionResult {
   executionId: string
+  /** The quantum service's own job id, when the service surfaces it (persistence layer). */
+  jobId?: string
   quboId: string
   algorithm: 'qaoa'
   status: 'completed'
@@ -72,6 +86,8 @@ export interface QuantumExecutionResult {
   topBitstring: string
   energyHistory: { iteration: number; energy: number }[]
   executionTimeMs: number
+  /** Raw objective of the executed outcome, when the quantum service reports one. */
+  objectiveValue?: number | null
   quantumAdvantageClaimed: false
 }
 
@@ -132,7 +148,7 @@ export class HttpQuantumServiceClient implements QuantumServiceClient {
   }
 
   async optimize(input: OptimizeQaoaInput): Promise<OptimizeAccepted> {
-    const data = await this.request<{ execution_id: string }>('/quantum/optimize', {
+    const data = await this.request<{ execution_id: string; job_id?: string }>('/quantum/optimize', {
       qubo_id: input.quboId,
       algorithm: input.algorithm,
       execution: {
@@ -143,13 +159,29 @@ export class HttpQuantumServiceClient implements QuantumServiceClient {
         ...(input.seed !== undefined && { seed: input.seed }),
       },
     })
-    return { executionId: data.execution_id }
+    return {
+      executionId: data.execution_id,
+      ...(data.job_id !== undefined && { jobId: data.job_id }),
+    }
   }
 
   async getResult(executionId: string): Promise<QuantumExecutionResult> {
     const data = await this.request<WireExecutionResult>(`/quantum/result/${encodeURIComponent(executionId)}`, undefined)
+    if (data.status !== 'completed') {
+      // A non-completed job is a structured failure: surface the stable code
+      // (e.g. HARDWARE_UNAVAILABLE / AER_UNAVAILABLE) so the orchestrator's
+      // fallback ladder — and not the caller — decides what to do next.
+      throw new QuantumServiceError(
+        data.error?.code ??
+          (data.status === 'cancelled' ? 'EXECUTION_CANCELLED' : data.status === 'invalid' ? 'INVALID_EXECUTION' : 'EXECUTION_FAILED'),
+        data.status === 'invalid' ? 422 : data.status === 'cancelled' ? 409 : 500,
+        data.error?.message ?? `Execution ${executionId} ended with status '${data.status}'`,
+        data.error ?? undefined,
+      )
+    }
     return {
       executionId: data.execution_id,
+      ...(data.job_id !== undefined && { jobId: data.job_id }),
       quboId: data.qubo_id,
       algorithm: data.algorithm,
       status: data.status,
@@ -164,6 +196,7 @@ export class HttpQuantumServiceClient implements QuantumServiceClient {
       topBitstring: data.top_bitstring,
       energyHistory: data.energy_history,
       executionTimeMs: data.execution_time_ms,
+      ...(data.objective_value !== undefined && { objectiveValue: data.objective_value }),
       quantumAdvantageClaimed: false,
     }
   }
@@ -181,9 +214,12 @@ export class HttpQuantumServiceClient implements QuantumServiceClient {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
+      const headers: Record<string, string> = { Accept: 'application/json' }
+      if (body !== undefined) headers['Content-Type'] = 'application/json'
+      if (config.QUANTUM_API_TOKEN) headers.Authorization = `Bearer ${config.QUANTUM_API_TOKEN}`
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: body === undefined ? 'GET' : 'POST',
-        headers: { Accept: 'application/json', ...(body !== undefined && { 'Content-Type': 'application/json' }) },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       })
@@ -248,9 +284,11 @@ function fromWireQubo(doc: WireQubo): QuboDocument {
 
 interface WireExecutionResult {
   execution_id: string
+  job_id?: string
   qubo_id: string
   algorithm: 'qaoa'
-  status: 'completed'
+  status: QuantumLifecycleStatus
+  error?: { code: string; message: string } | null
   execution: {
     mode_requested: QuantumExecutionMode
     mode_used: ExecutionModeWire
@@ -264,4 +302,5 @@ interface WireExecutionResult {
   top_bitstring: string
   energy_history: { iteration: number; energy: number }[]
   execution_time_ms: number
+  objective_value?: number | null
 }

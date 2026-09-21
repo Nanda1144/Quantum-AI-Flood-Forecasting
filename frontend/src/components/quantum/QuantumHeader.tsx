@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { Atom, CloudRain, MapPin, ShieldAlert } from 'lucide-react'
 import type { ReactElement } from 'react'
 import type { RiskProfile } from '../../types/optimization'
@@ -32,14 +39,9 @@ export function QuantumHeader({ adapterMode, inputs, forecastReference, riskProf
           <Atom size={24} aria-hidden="true" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-mist-50">
-            Quantum Optimization
-            <span className="ml-2 align-middle text-xs font-normal uppercase tracking-[0.2em] text-emerald-300/80">
-              Gateway
-            </span>
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight text-mist-50">Quantum Optimization</h1>
           <p className="text-sm text-mist-500">
-            Transparent QAOA pipeline — config, execute, and audit the sensor placement decision.
+            AI-Guided Combinatorial Decision Optimization
           </p>
         </div>
       </div>

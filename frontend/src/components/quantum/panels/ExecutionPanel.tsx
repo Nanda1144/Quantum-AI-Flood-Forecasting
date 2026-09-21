@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { Cpu, Play, Square } from 'lucide-react'
 import { QUANTUM_BACKENDS } from '../../../lib/quantum'
 import type { ExecutionMode, QuantumBackend } from '../../../types/optimization'
@@ -11,7 +18,6 @@ interface ExecutionPanelProps {
   runState: RunState
   canRun: boolean
   runError: string | null
-  adapterMode: 'mock' | 'http' | null
   onRun: () => void
   onCancel: () => void
 }
@@ -22,7 +28,6 @@ export function ExecutionPanel({
   runState,
   canRun,
   runError,
-  adapterMode,
   onRun,
   onCancel,
 }: ExecutionPanelProps) {
@@ -58,7 +63,7 @@ export function ExecutionPanel({
             className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/60 bg-emerald-500/25 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Play size={13} aria-hidden="true" />
-            {adapterMode === 'mock' ? 'Run simulation' : 'Run execution'}
+            Run Optimization
           </button>
         )
       }

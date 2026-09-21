@@ -76,12 +76,15 @@ All responses use the shared envelope — success:
 | `POST` | `/api/optimization/from-forecast` | Create an optimization-ready reference from an existing forecast (no quantum execution here). |
 | `POST` | `/api/optimization/run` | Validate and queue a full pipeline job (202 + `jobId`); requires `operator`. |
 | `GET` | `/api/optimization/inputs` | Federated GIS candidates + planner constraints (`candidateCount`, `forecast`, `risk`). |
-| `GET` | `/api/optimization/:id` | Job summary — status, algorithm, execution mode, result headline. |
+| `GET` | `/api/optimization/:id` | Job detail — summary (status, problem type, execution mode, algorithm) plus the integrity-audited `result` (null until persisted). |
+| `GET` | `/api/optimization/:id/result` | Final result read model — selection, bitstring, objective, violations, validation, runtime, classical + quantum comparison, experiment metadata, backend integrity audit. |
+| `GET` | `/api/optimization/:id/export` | Structured, auditable result export (summary, result, integrity, recommendation, experiment, disclaimer); the sensitive action is audit-logged. |
+| `GET` | `/api/optimization/jobs` | Experiment ledger — every visible job as a summary, newest first (benchmark page). |
 | `GET` | `/api/optimization/jobs/:id/pipeline` | Aggregated 10-stage pipeline progress for the UI. |
-| `GET` | `/api/optimization/jobs/:id/result` | Full result document (selection, coverage, QUBO, measurements, energy history, classical benchmark). |
+| `GET` | `/api/optimization/jobs/:id/result` | Legacy alias of `/api/optimization/:id/result` (same audited read model). |
 | `GET` | `/api/optimization/jobs/:id/qubo` | Served QUBO document. |
 | `GET` | `/api/optimization/jobs/:id/classical` | Persisted classical reference benchmark. |
-| `GET` | `/api/optimization/jobs/:id/export` | Signed, auditable result document with benchmark disclaimer. |
+| `GET` | `/api/optimization/jobs/:id/export` | Legacy alias of `/api/optimization/:id/export`. |
 
 `GET /api/ai/models` — the registry routes CRT these records from the DB-owning
 `model_versions`/`model_metrics` tables. The gateway **never computes or
@@ -222,12 +225,160 @@ speedup is ever claimed** — every result carries
 `quantumAdvantageClaimed: false` and is always paired with the persisted
 classical reference benchmark.
 
+### Optimization persistence layer
+
+Completed jobs are normalized into the `004_optimization_persistence` schema
+(Nanda's ownership):
+
+| Table | Purpose |
+| --- | --- |
+| `optimization_jobs` | Operational record (003) plus scalar **exact-configuration** columns added in 004: `forecast_reference`, `candidate_reference`, `input_reference`, `variables_count`, `constraints`, `objective_configuration`, `error_message`, soft-delete columns, and QUBO placement (`qubo_storage`/`qubo_artifact_reference`). |
+| `optimization_results` | One row per completed job (FK `fk_optimization_results_job`): `bitstring`, `selected_locations` (location **IDs only**, never GIS geometry), `objective_value`, `constraint_violations`, `validation_status`, `runtime_ms`, `classical_objective`, `quantum_objective`, `approximation_quality`. Migration 007 adds the **classical benchmark reference snapshot**: `classical_solver`, `classical_runtime_ms`, `approximation_ratio`, `approximation_basis`, `approximation_invalid_reason`, `random_seed`. |
+| `optimization_job_audit` | Write-once trail for delete-protection events (`action`, `actor`, `reason`). |
+| `optimization_qubo_artifacts` | QUBO matrices too large to inline. Small demonstrative QUBOs (≤ `OPTIMIZATION_QUBO_INLINE_LIMIT` variables) stay inline; larger ones are stored here and referenced from the job row. |
+| `optimization_qubo_metadata` | QUBO metadata **audit record** (migration 005), one row per job (`qubo_id` = `<jobId>-Q1`). Small problems inline the matrix, linear/quadratic terms, penalty configuration and objective expression as plain JSON; large problems store only `artifact_reference` + sha-256 `checksum` + `matrix_dimensions` + `storage_location` + `metadata` — the cells are never embedded and no raw Python/Qiskit objects are persisted. |
+| `quantum_jobs` | One row per **real quantum submission** (migration 006). Only configuration scalars and plain-JSON counts are stored — never credentials, never raw circuit objects. Each submission — including every failed attempt on a fallback ladder — gets its own honest row so the simulator/hardware distinction is preserved. |
+| `quantum_results` | One normalized result row per completed quantum job (migration 006), `id` = `<quantum_job_id>-R1`. |
+
+Required indexes: `optimization_jobs(status, problem_type, created_at)`,
+`optimization_results(optimization_job_id, validation_status, created_at)`,
+`optimization_qubo_metadata(optimization_job_id, created_at)`, plus the 006 set
+(`quantum_jobs(optimization_job_id)`, `quantum_jobs(status)`,
+`quantum_jobs(created_at)`, `quantum_results(quantum_job_id)`,
+`quantum_results(created_at)`).
+
+**Classical benchmark reference (migration 007).** The benchmark contract is
+persisted in `optimization_results` rather than a redundant benchmark table:
+every contract field already had a home in the results model — `classical_objective`,
+`quantum_objective`, `constraint_violations`, problem size and the exact
+experiment configuration (`optimization_jobs.request` / `variables_count`),
+`quantum_runtime_ms` (`quantum_results.runtime_ms`, 006) and `created_at` — so
+migration 007 only adds the six values without a normalized home:
+`classical_solver`, `classical_runtime_ms`, `approximation_ratio`,
+`approximation_basis`, `approximation_invalid_reason` and `random_seed`. The
+snapshot is computed once at pipeline completion
+(`OptimizationJobService.toResultRecord`) from the stored measurements and is
+**write-once**: the repository upsert preserves any existing snapshot via
+`COALESCE`, so a rerun never overwrites historical benchmark results. The
+`approximation_ratio` is the raw direction-aware quotient (never clamped; NULL
+only with a known `approximation_invalid_reason` code) and `approximation_basis`
+records whether it was measured against the `exhaustive` optimum or the `greedy`
+heuristic. `GET /:id/benchmark` returns the stored snapshot verbatim; rows
+recorded before 007 fall back to read-time computation.
+
+**Quantum submission persistence (migration 006).** The orchestrator best-effort
+persists real quantum work when it sees the service's `job_id`: a `queued` row
+on the accepted `optimize()` result, then `completed` + result (or `failed`
+with code/message) for the attempt that produced the outcome. Persistence is
+guarded (`repo` + `jobId` present) and never breaks the pipeline — a storage
+error is logged and the run continues. `quantum_jobs` enforces `execution_mode`
+and `status` CHECK bounds and `submitted_at ≤ started_at ≤ completed_at`;
+`quantum_results` is one row per job (`PRIMARY KEY`, `id` = `<job_id>-R1`), both
+FK `ON DELETE CASCADE` from `optimization_jobs` / `quantum_jobs`. There is no
+backfill: only real submissions are recorded.
+
+**Delete protection.** Completed research results are write-once. The
+`qflare_guard_optimization_delete` trigger rejects any hard `DELETE` of a
+completed job or its result row (SQLSTATE `P0001`) unless the administrative
+escape hatch `app.allow_optimization_delete` is set. The API never hard-deletes:
+`DELETE /api/optimization/jobs/:id` (operator, ownership-scoped) is a **soft
+delete** that requires an auditable `reason`; completed results additionally
+require the `admin` role, otherwise `403 DELETE_PROTECTED`. The row is retained
+with `deleted_at`/`deleted_by`/`delete_reason` and the event is written to
+`optimization_job_audit`.
+
+Persistence read/write surfaces: `GET /api/optimization/jobs/:id/results`
+(normalized row, 404 `RESULT_NOT_FOUND`), `GET /api/optimization/jobs/:id/audit`
+(delete-protection trail), and `GET /api/optimization/jobs/:id/qubo` (returns
+`storage`, `inline`, and `artifactReference`).
+
+### Quantum benchmarking read-out
+
+`GET /api/optimization/:id/benchmark` (viewer, ownership-scoped) assembles a
+read-only **benchmark document** from the stored result. It restates only raw,
+write-once measurements — the greedy/exhaustive classical reference, the quantum
+outcome (objective, executor runtime), constraint violations, and reproducibility
+metadata — and makes **no quantum speedup claim**. The benchmark document
+contains:
+
+- `problem` size/type and `classical` reference: solver (`exhaustive` when the
+  instance is ≤ `OPTIMIZATION_EXHAUSTIVE_LIMIT` and ≤ 24 candidates, else
+  `greedy`), summed utility objective, `optimal`, and runtime.
+- `quantum`: algorithm (`qaoa`), objective, `runtimeMs` read from the persisted
+  `quantum_results.runtime_ms` (`runtimeSource:
+  "quantum_results.runtime_ms"`), device notes, or the removal reason when no
+  real quantum execution happened.
+- `approximationRatio`: `direction: "maximize"` and a direction-aware ratio
+  (`quantum / reference`, only when the reference is positive and the quantum
+  objective is non-negative; never blind-divisioned, never clamped). `basis` is
+  `"exact_optimal"` (exhaustive) or `"greedy_reference"` and is stated honestly;
+  a ratio above 1.0 against a greedy reference is not an optimality claim.
+  When no ratio exists, `value` is `null` with an `invalidReason`
+  (`MISSING_CLASSICAL_REFERENCE`, `MISSING_QUANTUM_OBJECTIVE`,
+  `OBJECTIVE_NOT_POSITIVE`, `QUANTUM_OBJECTIVE_NEGATIVE`). The migration 007
+  snapshot is returned verbatim — it is never recomputed over a stored row.
+- `reproducibility`: the seed persisted with the result (migration 007) — the
+  actual `seedFrom(job.id, forecastReference, candidateCount)` value passed to the
+  QAOA driver (recomputed only for pre-007 rows), plus QAOA layers/shots and
+  backend; variational angles are deliberately absent (the executor does not
+  expose them).
+- `quantumAdvantageClaimed: false` and a disclaimer; the frontend explains how to
+  read the results.
+
+`POST /api/optimization/:id/benchmark` (operator) is the idempotent
+execute-or-retrieve entry point: the classical reference is computed at pipeline
+run time and its measurements are write-once, so POST returns the stored document
+when the job produced a result, and `409 JOB_NOT_COMPLETE` when it did not.
+`GET /api/optimization/benchmarks` (viewer, ownership-scoped) is a filterable
+ledger (`problem_type`, `algorithm`, `execution_mode`, `from`/`to` on the job's
+creation date), newest first.
+
+### Final result API (integrity-audited)
+
+`GET /api/optimization/:id` returns the job summary plus the audited `result`
+document; `GET /api/optimization/:id/result` returns that document on its own;
+`GET /api/optimization/:id/export` wraps it in a structured export. All three are
+`viewer` routes, ownership-scoped (a foreign job is `404 JOB_NOT_FOUND`, never a
+`403` leak), and require a persisted result (`404 RESULT_NOT_FOUND` otherwise).
+
+The **database / optimization service is the source of truth**: the API never
+recalculates a result from client-supplied values. Before a result is served it
+is re-derived from stored measurements and the deterministic inputs the pipeline
+consumed (`src/lib/optimization/result-validation.ts`):
+
+| Check | What it proves |
+| --- | --- |
+| `result_status` | The job completed and the recorded `valid`/`invalid` verdict is well-formed and consistent (`pending_validation` has no verdict, so it can never be attested). |
+| `candidate_source` | The candidate set is reproducible from the stored reference (fails closed if not). |
+| `bitstring_maps_to_variables` | The bitstring is well-formed and one-to-one with the known variables. |
+| `selected_candidates_exist` | Every selected location id exists and matches the decoded bitstring. |
+| `constraints_satisfied` | Re-validating the decoded solution finds no violation AND the row does not hide one. |
+| `objective_consistent` | The stored objective matches the recomputed objective (tolerance `1e-3`). |
+
+A failed audit **never deletes or hides** the record — it is preserved for
+debugging/research — but `recommendation.eligible` is `false` with a `reason`,
+so an invalid result is never exposed as an operational recommendation. The
+document also carries `quantumComparison`, the direction-aware
+`approximationRatio` and the exact `experiment` metadata (problem, mode/backend,
+fallback, references, reproducibility seed) — all restated, never invented.
+Sensitive result actions (`result_viewed`, `result_exported`) are appended to the
+write-once `optimization_job_audit` trail, and no quantum speedup is ever claimed
+(`quantumAdvantageClaimed: false`).
+
+The normalized `optimization_results` row (migration 008) is the persisted
+contract behind the read model: `validation_status` is `valid` | `invalid` |
+`pending_validation` — so an **invalid result is never conflated with a validated
+one** — with `validation_timestamp`, `validation_details` (the verdict summary +
+violations) and `explanation_metadata` (objective breakdown + coverage). Location
+IDs/references only are stored; the GIS module stays the owner of spatial data.
+
 ### Error codes
 
 `VALIDATION_ERROR` (422), `UNAUTHORIZED` (401), `FORBIDDEN` (403),
 `AI_SERVICE_UNAVAILABLE` (503), `FORECAST_NOT_FOUND` (404),
 `MODEL_NOT_FOUND` (404), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500),
-plus the optimization codes: `JOB_NOT_FOUND` (404), `NO_CANDIDATES` (422),
+plus the optimization codes: `JOB_NOT_FOUND` (404), `RESULT_NOT_FOUND` (404),
+`DELETE_PROTECTED` (403), `JOB_NOT_COMPLETE` (409), `NO_CANDIDATES` (422),
 `INVALID_OBJECTIVE_WEIGHTS` (422), `INFEASIBLE_BUDGET` (422),
 `UNSUPPORTED_PROBLEM_TYPE` (422), `QUBO_GENERATION_FAILED` (503),
 `QAOA_EXECUTION_FAILED` (503), `QUANTUM_UNAVAILABLE` (503),
@@ -241,7 +392,9 @@ plus the optimization codes: `JOB_NOT_FOUND` (404), `NO_CANDIDATES` (422),
 - **RBAC** — `authorize(role)` ranks `viewer < operator < admin`. The
   optimization handoff and `POST /api/optimization/run` require at least
   `operator`. Optimization job reads require `viewer` and are additionally
-  ownership-scoped (owner or admin only).
+  ownership-scoped (owner or admin only). Deleting a **completed** research
+  result requires `admin` (plus an auditable reason); only soft deletes are
+  ever performed.
 - **Rate limiting** — `express-rate-limit` guards all `/api` traffic, a
   stricter limiter guards `/api/auth/login`, and `optimizationRunLimiter`
   (window × `OPTIMIZATION_RUN_LIMIT_MAX`, default 10) guards the expensive
@@ -285,8 +438,12 @@ pagination, the optimization handoff, and the full optimization orchestration
 surface: the 10 documented pipeline scenarios (weight/budget validation, no
 candidates, QUBO/QAOA/hardware fallbacks, decoding failure, constraint
 violation, benchmark persistence), job summaries, subresource reads, ownership
-scoping, and route-level auth/RBAC. The `../quantum-service` contract tests run
-against that FastAPI app directly (needs its own `pip install`).
+scoping, and route-level auth/RBAC. Persistence tests cover the 004 schema
+(results/audit/artifact tables, FK and delete-protection trigger, down/up
+round-trip) as well as the API-level normalized result read, the
+`DELETE_PROTECTED` gate, and the audited soft-delete trail. The
+`../quantum-service` contract tests run against that FastAPI app directly
+(needs its own `pip install`).
 
 ## Source layout
 
@@ -326,6 +483,7 @@ src/
 | `OPTIMIZATION_FALLBACK_POLICY` | `retry_simulator` | Executor-failure policy: `retry_simulator` · `classical_only` · `error`. |
 | `OPTIMIZATION_EXECUTION_TIMEOUT_MS` | `120000` | Wall-clock cap on one optimization job. |
 | `OPTIMIZATION_EXHAUSTIVE_LIMIT` | `18` | Candidate cap for the exhaustive classical reference solver. |
+| `OPTIMIZATION_QUBO_INLINE_LIMIT` | `12` | QUBOs with at most this many variables are persisted inline; larger matrices go to `optimization_qubo_artifacts` by reference. |
 | `OPTIMIZATION_RUN_LIMIT_MAX` | `10` | Per-window cap on `POST /api/optimization/run`. |
 | `MODEL_SELECTION_METRIC` | `r2` | Primary metric for `POST /api/ai/models/compare` policy (`mae`, `rmse`, `r2`, `nse`, `inferenceTime`). |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window. |

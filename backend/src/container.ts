@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Dependency container — wires repositories, the AI client, and services.
  *
  * `POSTGRES` mode uses real PostgreSQL; `MEMORY` mode uses in-memory repos
@@ -11,10 +18,10 @@ import { AIServiceClient } from './clients/ai-service.client.ts'
 import type { QuantumServiceClient } from './clients/quantum-service.client.ts'
 import { HttpQuantumServiceClient } from './clients/quantum-service.client.ts'
 import { config } from './config.ts'
-import { MemoryForecastRepository, MemoryModelComparisonRepository, MemoryModelRepository, MemoryOptimizationJobRepository, MemoryOptimizationRepository } from './repositories/memory/repositories.ts'
-import { PostgresForecastRepository, PostgresModelComparisonRepository, PostgresModelRepository, PostgresOptimizationJobRepository, PostgresOptimizationRepository } from './repositories/postgres/repositories.ts'
+import { MemoryForecastRepository, MemoryModelComparisonRepository, MemoryModelRepository, MemoryOptimizationJobRepository, MemoryOptimizationRepository, MemoryQuantumJobRepository } from './repositories/memory/repositories.ts'
+import { PostgresForecastRepository, PostgresModelComparisonRepository, PostgresModelRepository, PostgresOptimizationJobRepository, PostgresOptimizationRepository, PostgresQuantumJobRepository } from './repositories/postgres/repositories.ts'
 import { ensureSchema } from './repositories/postgres/pool.ts'
-import type { ForecastRepository, ModelComparisonRepository, ModelRepository, OptimizationJobRepository, OptimizationRepository } from './repositories/repositories.ts'
+import type { ForecastRepository, ModelComparisonRepository, ModelRepository, OptimizationJobRepository, OptimizationRepository, QuantumJobRepository } from './repositories/repositories.ts'
 import { AnalyticsService } from './services/analytics.service.ts'
 import { AuthService } from './services/auth.service.ts'
 import { ForecastSyncService } from './services/forecast-sync.service.ts'
@@ -34,6 +41,7 @@ export interface Container {
   optimizationRepo: OptimizationRepository
   comparisonRepo: ModelComparisonRepository
   jobRepo: OptimizationJobRepository
+  quantumJobRepo: QuantumJobRepository
   aiClient: ForecastClient
   quantumClient: QuantumServiceClient
   candidates: CandidateStore
@@ -54,6 +62,7 @@ async function buildRepos(): Promise<{
   modelRepo: ModelRepository
   optimizationRepo: OptimizationRepository
   optimizationJobRepo: OptimizationJobRepository
+  quantumJobRepo: QuantumJobRepository
   comparisonRepo: ModelComparisonRepository
   mode: 'postgres' | 'memory'
 }> {
@@ -64,6 +73,7 @@ async function buildRepos(): Promise<{
       modelRepo: new MemoryModelRepository(),
       optimizationRepo: new MemoryOptimizationRepository(),
       optimizationJobRepo: new MemoryOptimizationJobRepository(),
+      quantumJobRepo: new MemoryQuantumJobRepository(),
       comparisonRepo: new MemoryModelComparisonRepository(),
       mode: 'memory',
     }
@@ -75,6 +85,7 @@ async function buildRepos(): Promise<{
       modelRepo: new PostgresModelRepository(),
       optimizationRepo: new PostgresOptimizationRepository(),
       optimizationJobRepo: new PostgresOptimizationJobRepository(),
+      quantumJobRepo: new PostgresQuantumJobRepository(),
       comparisonRepo: new PostgresModelComparisonRepository(),
       mode: 'postgres',
     }
@@ -86,6 +97,7 @@ async function buildRepos(): Promise<{
       modelRepo: new MemoryModelRepository(),
       optimizationRepo: new MemoryOptimizationRepository(),
       optimizationJobRepo: new MemoryOptimizationJobRepository(),
+      quantumJobRepo: new MemoryQuantumJobRepository(),
       comparisonRepo: new MemoryModelComparisonRepository(),
       mode: 'memory',
     }
@@ -96,6 +108,7 @@ async function buildRepos(): Promise<{
 export interface OptimizationOverrides {
   quantumClient?: QuantumServiceClient
   jobRepo?: OptimizationJobRepository
+  quantumJobRepo?: QuantumJobRepository
   candidateStore?: CandidateStore
   constraintsSource?: ConstraintsSource
   options?: Partial<OptimizationJobServiceOptions>
@@ -111,6 +124,7 @@ export async function buildContainer(options: {
   const comparisonRepo = options.comparisonRepo ?? repos.comparisonRepo
   const quantumClient = options.optimization?.quantumClient ?? new HttpQuantumServiceClient()
   const jobRepo = options.optimization?.jobRepo ?? repos.optimizationJobRepo
+  const quantumJobRepo = options.optimization?.quantumJobRepo ?? repos.quantumJobRepo
   const candidateStore = options.optimization?.candidateStore ?? new ServerCandidateStore()
   const constraintsSource = options.optimization?.constraintsSource ?? new ServerConstraintsSource()
 
@@ -131,6 +145,8 @@ export async function buildContainer(options: {
       fallbackPolicy: options.optimization?.options?.fallbackPolicy ?? config.OPTIMIZATION_FALLBACK_POLICY,
       exhaustiveLimit: options.optimization?.options?.exhaustiveLimit ?? config.OPTIMIZATION_EXHAUSTIVE_LIMIT,
       executionTimeoutMs: options.optimization?.options?.executionTimeoutMs ?? config.OPTIMIZATION_EXECUTION_TIMEOUT_MS,
+      quboInlineLimit: options.optimization?.options?.quboInlineLimit ?? config.OPTIMIZATION_QUBO_INLINE_LIMIT,
+      quantumJobRepo,
     },
   )
 
@@ -138,6 +154,7 @@ export async function buildContainer(options: {
     ...repos,
     comparisonRepo,
     jobRepo,
+    quantumJobRepo,
     aiClient,
     quantumClient,
     candidates: candidateStore,

@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { Boxes } from 'lucide-react'
 import type { ModelInfo } from '../../types/ai'
 import { SectionHeader } from '../ui/SectionHeader'
@@ -83,6 +90,11 @@ export function ModelInfoPanel({ model }: ModelInfoPanelProps) {
           <MetricCell label="NSE" value={model.metrics.nse} goodWhen="high" />
           <MetricCell label="Accuracy" value={model.metrics.accuracy} goodWhen="high" />
         </div>
+        {model.derived && (
+          <p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
+            Assembled from the forecast record — this model has no stored registry row or evaluation data.
+          </p>
+        )}
       </div>
     </div>
   )

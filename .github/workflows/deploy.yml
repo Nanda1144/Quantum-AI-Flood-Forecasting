@@ -1,3 +1,10 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: deployment | Owner: Nanda | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README:
+# no fabricated data, no invented metrics, every surrogate or fallback is
+# clearly labelled, and no quantum speedup is ever claimed.
 name: Deploy Frontend to GitHub Pages
 
 on:
@@ -60,8 +67,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-<<<<<<< HEAD
         uses: actions/deploy-pages@v4
-=======
-        uses: actions/deploy-pages@v4
->>>>>>> 14784bba5abc962a84cc2640812e8fb82dc9b7f6

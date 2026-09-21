@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * OptimizationJobService orchestration tests — the 10 documented scenarios.
  *
  *   1  valid optimization
@@ -28,6 +35,7 @@ const OPTIONS: OptimizationJobServiceOptions = {
   fallbackPolicy: 'retry_simulator',
   exhaustiveLimit: 18,
   executionTimeoutMs: 5000,
+  quboInlineLimit: 12,
 }
 
 describe('OptimizationJobService orchestration', () => {
@@ -80,6 +88,59 @@ describe('OptimizationJobService orchestration', () => {
     assert.equal(result.classicalComparison.method, 'exhaustive')
     assert.ok(result.classicalComparison.objectiveValue > 0)
     assert.equal(job.classical!.method, 'exhaustive')
+
+    // Persistence-layer configuration record.
+    assert.equal(typeof result.bitstring, 'string')
+    assert.equal(result.bitstring.length, job.request.candidateCount)
+    assert.equal(job.forecastReference, job.request.forecastReference)
+    assert.equal(job.inputReference, `ai://forecasts/${job.request.forecastReference}`)
+    assert.equal(job.variablesCount, job.request.candidateCount)
+    assert.deepEqual(job.constraints?.coverageRequirements, [])
+    assert.equal(job.constraints?.maxSensors, job.request.maxSensors)
+    assert.equal(job.objectiveConfiguration?.shots, job.request.shots)
+    assert.equal(job.objectiveConfiguration?.layers, job.request.layers)
+    assert.equal(job.quboStorage, 'inline')
+    assert.equal(job.quboArtifactReference, null)
+    assert.equal(job.errorMessage, null)
+    assert.equal(job.deletedAt, null)
+  })
+
+  it('persists a normalized result row for a completed job', async () => {
+    const job = await run(makeRunRequest())
+    const record = await jobRepo.findResult(job.id)
+    assert.ok(record, 'a completed job must have a persisted result row')
+    assert.equal(record!.id, `${job.id}-R1`)
+    assert.equal(record!.optimizationJobId, job.id)
+    assert.equal(record!.bitstring, job.result!.bitstring)
+    assert.equal(record!.validationStatus, 'valid')
+    assert.equal(record!.selectedLocationIds.length, job.request.maxSensors)
+    assert.ok(record!.objectiveValue > 0)
+    assert.equal(record!.classicalObjective, job.result!.classicalComparison.objectiveValue)
+    assert.equal(record!.quantumObjective, job.result!.objectiveValue)
+    assert.equal(record!.approximationQuality, 1)
+  })
+
+  it('routes QUBOs above the inline limit to the artifact store by reference', async () => {
+    const job = await run(makeRunRequest({ candidateCount: 14, maxSensors: 5 }))
+    assert.equal(job.status, 'completed')
+    assert.equal(job.quboStorage, 'artifact')
+    assert.equal(job.qubo, null, 'large QUBO must travel by reference, not inline')
+    assert.match(job.quboArtifactReference!, /^qflare:\/\/qubo\//)
+    assert.equal(job.result!.qubo.variableCount, 14)
+  })
+
+  it('soft-deletes through the repository with an audit trail (never a hard delete)', async () => {
+    const job = await run(makeRunRequest())
+    const deleted = await jobRepo.deleteJob(job.id, 'admin', 'approved cleanup')
+    assert.ok(deleted.deletedAt)
+    assert.equal(deleted.deletedBy, 'admin')
+    assert.equal(deleted.deleteReason, 'approved cleanup')
+    assert.ok(jobRepo.findById(job.id), 'the row must still exist after a soft delete')
+    const audit = await jobRepo.listAudit(job.id)
+    assert.equal(audit.length, 1)
+    assert.equal(audit[0].action, 'soft_deleted')
+    assert.equal(audit[0].actor, 'admin')
+    assert.equal(audit[0].reason, 'approved cleanup')
   })
 
   it('records every pipeline step as done', async () => {
@@ -225,6 +286,20 @@ describe('OptimizationJobService orchestration', () => {
     assert.equal(job.classical!.method, 'exhaustive')
   })
 
+  it('9b. an unachievable coverage floor yields exactly ONE violation (no echo duplication)', async () => {
+    const job = await run(
+      makeRunRequest({
+        coverageRequirements: [{ metric: 'population', minFraction: 0.99, origin: 'Operator' }],
+      }),
+    )
+    assert.equal(job.status, 'completed')
+    assert.equal(job.validationStatus, 'invalid')
+    const violations = job.result!.constraintViolations.filter((violation) => violation.code === 'COVERAGE_POPULATION_BELOW_MINIMUM')
+    assert.equal(violations.length, 1)
+    assert.match(violations[0].message, /only \d+% achievable/)
+    assert.equal(job.classical!.method, 'exhaustive')
+  })
+
   // 10 ───────────────────────────────────────────────────────────────────────
   it('10. persists a usable classical benchmark with every result', async () => {
     const job = await run(makeRunRequest({ candidateCount: 6 }))
@@ -265,5 +340,49 @@ describe('OptimizationJobService orchestration', () => {
     assert.equal(summary.backend, job.backend)
     assert.equal(summary.qubitCount, job.result!.qubits)
     assert.ok('status' in summary)
+  })
+
+  // Experiment ledger ───────────────────────────────────────────────────────
+  it('benchmark summaries carry the classical reference and quality honestly', async () => {
+    const job = await run(makeRunRequest())
+    const summary = service().summary(job)
+    const result = job.result!
+    assert.equal(summary.resultSummary.objectiveValue, result.objectiveValue)
+    assert.equal(summary.resultSummary.classicalObjectiveValue, result.classicalComparison.objectiveValue)
+    assert.equal(summary.resultSummary.classicalRuntimeMs, result.classicalComparison.executionTimeMs)
+    assert.equal(summary.resultSummary.validated, true)
+    assert.equal(summary.resultSummary.constraintViolationCount, 0)
+    assert.equal(
+      summary.resultSummary.approximationQuality,
+      Number(Math.min(1, result.objectiveValue / result.classicalComparison.objectiveValue).toFixed(4)),
+    )
+    assert.ok(summary.resultSummary.approximationQuality! <= 1)
+  })
+
+  it('listSummariesForPrincipal returns the ledger newest-first and scoped to the owner', async () => {
+    const earlier = await run(makeRunRequest())
+    const later = await run(makeRunRequest())
+    const svc = service()
+
+    const visible = await svc.listSummariesForPrincipal({ username: 'operator', role: 'operator' })
+    assert.ok(visible.length >= 2, 'the ledger must include every completed run from the suite')
+    for (const entry of visible) {
+      assert.equal(entry.jobId, entry.id)
+      assert.ok(entry.createdAt)
+      // The two just-created runs must both be present, newest first.
+      if (entry.jobId === earlier.id || entry.jobId === later.id) {
+        assert.equal(entry.owner, 'operator')
+      }
+    }
+    const indexOfEarlier = visible.findIndex((entry) => entry.jobId === earlier.id)
+    const indexOfLater = visible.findIndex((entry) => entry.jobId === later.id)
+    assert.ok(indexOfEarlier >= 0 && indexOfLater >= 0)
+    assert.ok(indexOfLater < indexOfEarlier, 'newer runs must sort ahead of older ones')
+
+    const foreign = await svc.listSummariesForPrincipal({ username: 'someone-else', role: 'viewer' })
+    assert.equal(foreign.length, 0, 'a non-owner must never see another tenant ledger')
+
+    const all = await svc.listSummariesForPrincipal({ username: 'admin', role: 'admin' })
+    assert.equal(all.length, visible.length, 'admin sees the full ledger')
   })
 })

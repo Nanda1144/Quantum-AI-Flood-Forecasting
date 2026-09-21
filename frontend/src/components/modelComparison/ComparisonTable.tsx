@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import type { ComparisonSortKey, ModelComparisonRow } from '../../types/ai'
 import { formatDateTime, formatDuration, formatMetric } from '../../lib/format'
@@ -105,12 +112,14 @@ export function ComparisonTable({
                     selected ? 'bg-emerald-500/10' : ''
                   }`}
                 >
-                  <th scope="row" className="max-w-[190px] px-4 py-3">
+                  <th scope="row" className="max-w-[190px] px-4 py-3 font-normal">
                     <p className="truncate font-semibold text-mist-50" title={row.name}>
                       {row.name}
                     </p>
-                    <p className="truncate text-mist-600">{row.version}</p>
                   </th>
+                  <td className="max-w-[140px] truncate px-4 py-3 font-mono text-xs text-mist-400" title={row.version}>
+                    {row.version}
+                  </td>
                   <td className="max-w-[160px] truncate px-4 py-3 text-mist-300" title={row.algorithm}>
                     {row.algorithm}
                   </td>

@@ -61,6 +61,15 @@ down: the configured fallback policy (`retry_simulator` default) keeps every
 job finishing against a persisted classical reference benchmark. **No quantum
 speedup is ever claimed.**
 
+The `quantum-service` also exposes a **generic QUBO generation + retrieval API**
+(consumed by the backend's contract seam and exercised by its contract tests):
+`POST /quantum/qubo` accepts a shape-dispatched payload — the original
+sensor-placement body (`candidates`) *or* a generic body (`variables` +
+explicit `objective` + `constraints` + optional `weights`) — and stores a
+clean-JSON QUBO document retrievable via `GET /quantum/qubo/:id`,
+`GET /quantum/qubo/:id/variables` (semantic variable→candidate mapping), and
+`GET /quantum/qubo/:id/constraints`. See `quantum-service/README.md`.
+
 ### How the AI Analytics page gets its data
 
 1. The React page `/` (`AI Analytics`) calls `loadAIAnalytics()` from
@@ -134,13 +143,14 @@ consumed by the Node backend stays unchanged.
 | `frontend/` | React + TypeScript + Vite + Tailwind command-center UI |
 | `backend/` | **Node/Express API gateway** — AI analytics endpoints, auth/RBAC, rate limiting, validation, PostgreSQL persistence |
 | `ai-service/` | **FastAPI forecasting service** — stable REST contract + `ForecastEngine` seam for Navya's pipeline |
-| `quantum-service/` | **FastAPI QUBO/QAOA service** — deterministic reference executor for `POST /quantum/qubo`, `POST /quantum/optimize`, `GET /quantum/result/:id` |
+| `quantum-service/` | **FastAPI QUBO/QAOA service** — deterministic reference executor for `POST /quantum/qubo` (sensor-placement *and* generic payloads), `GET /quantum/qubo/:id`, `/quantum/qubo/:id/variables`, `/quantum/qubo/:id/constraints`, `POST /quantum/optimize`, `GET /quantum/result/:id` |
 | `database/` | **Schema & persistence** — reverse migrations, model registry (`model_versions`/`model_metrics`), dev-marked seeds |
-| `gis/` | Geospatial data module — placeholder |
-| `iot/` | Sensor/IoT ingestion — placeholder |
-| `deployment/` | Deployment / container manifests — placeholder |
-| `tests/` | Cross-module integration tests — placeholder |
-| `docs/` | Architecture & decision records — placeholder |
+| `gis/` | Geospatial data module — contract defined (`/api/optimization/inputs` candidate sites); implementation planned, see `gis/README.md` |
+| `iot/` | Sensor/IoT ingestion — contract defined (telemetry → observed water level → forecast chart); implementation planned, see `iot/README.md` |
+| `deployment/` | Deployment docs, run topology, and GitHub Pages workflows — see `deployment/README.md` |
+| `tests/` | Cross-module QA reports and per-feature test records — see `tests/README.md` and `tests/reports/` |
+| `docs/` | Architecture & decision records index — see `docs/README.md` |
+| `.github/` | GitHub Actions — frontend Pages deploy on the feature branch (`deploy.yml`) and on `main` (`static.yml`); see `.github/workflows/README.md` |
 
 Each module carries its own `README.md` with setup and API notes.
 
@@ -193,7 +203,17 @@ the federated sources, the QUBO is built locally *and* pushed to
 `quantum-service`, the classical reference always runs and is always stored,
 and the decoded outcome is gated by constraint validation before a result is
 ever presented. Jobs are scoped to their owner (or admin) and persist through
-`optimization_jobs` (PostgreSQL JSONB, in-memory in dev).
+`optimization_jobs`; completed runs are normalized into `optimization_results`
+(one FK-linked row per job, location IDs only), with large QUBO matrices stored
+by reference in `optimization_qubo_artifacts`. Every job also gets a QUBO audit
+record in `optimization_qubo_metadata` (small problems inline the full plain-JSON
+matrix/terms/penalties/expression; large ones store reference + sha-256 checksum +
+dimensions only — never the cells, never raw Qiskit objects), so the experiment
+is always reproducible and auditable. Completed research results are
+write-once: the `qflare_guard_optimization_delete` trigger blocks hard deletes,
+and the API exposes only an audited soft-delete (`optimization_job_audit`) that
+requires the `admin` role and a reason (see `database/README.md`). Persistence
+falls back to in-memory repositories in dev.
 
 ### Quantum Optimization dashboard (`/quantum-optimization`)
 
@@ -299,7 +319,8 @@ the `README.md` inside each module for details.
 - **ai-service:** FastAPI, Pydantic, uvicorn (Python).
 - **quantum-service:** FastAPI, Pydantic, uvicorn (Python); Qiskit Aer / IBM
   runtime adapters degrade to the documented 503 when not installed.
-- **Persistence:** PostgreSQL (forecasts, model registry, optimization jobs).
+- **Persistence:** PostgreSQL (forecasts, model registry, optimization jobs +
+  normalized results/audit/QUBO artifacts).
 
 ---
 
@@ -310,7 +331,7 @@ the `README.md` inside each module for details.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | `''` | Override the API base URL (same-origin proxy otherwise). |
-| `VITE_USE_MOCK_DATA` | `'true'` | Set to `false` to disable the sample-data fallback. |
+| `VITE_USE_MOCK_DATA` | `''` | `'false'` forces live backends even in dev. Unset/other → the AI Analytics sample-data fallback is permitted, but only in dev builds (`import.meta.env.DEV`); the Optimization page selects its mock/http adapter on this same flag. |
 
 ### backend environment (`backend/.env`)
 

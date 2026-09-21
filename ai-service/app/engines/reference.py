@@ -1,3 +1,11 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: ai-service | Owner: Navya (ForecastingEngine seam) | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README:
+# no fabricated data, no invented metrics, every surrogate or fallback is
+# clearly labelled, and no quantum speedup is ever claimed.
+
 """
 Reference forecasting engine.
 
@@ -148,6 +156,8 @@ class ReferenceEngine:
             distribution=distribution,
             summary=summary,
             overall_trend=overall,
+            threshold_level=THRESHOLD_LEVEL,
+            threshold_label="Flood stage reference",
         )
 
     def models(self) -> list[ModelInfo]:

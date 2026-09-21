@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * In-memory repository implementations.
  *
  * Used by unit/integration tests and by the local demo runtime when the
@@ -17,13 +24,24 @@ import type {
   PredictionQuery,
   ModelInfo,
 } from '../../types/domain.ts'
-import type { OptimizationJob as OptimizationJobRecord } from '../../types/optimization.ts'
+import type {
+  OptimizationJob as OptimizationJobRecord,
+  OptimizationJobAuditEntry,
+  OptimizationResultRecord,
+  QuboBuild,
+  QuboMetadata,
+  QuantumJobRecord,
+  QuantumResultRecord,
+} from '../../types/optimization.ts'
+import { AppError, ErrorCodes } from '../../envelope.ts'
+import { deriveQuboMetadata } from '../../lib/optimization/qubo-metadata.ts'
 import type {
   ForecastRepository,
   ModelComparisonRepository,
   ModelRepository,
   OptimizationJobRepository,
   OptimizationRepository,
+  QuantumJobRepository,
 } from '../repositories.ts'
 
 export class MemoryForecastRepository implements ForecastRepository {
@@ -93,9 +111,24 @@ export class MemoryModelRepository implements ModelRepository {
 
 export class MemoryOptimizationJobRepository implements OptimizationJobRepository {
   private rows = new Map<string, OptimizationJobRecord>()
+  private results = new Map<string, OptimizationResultRecord>()
+  private audits = new Map<string, OptimizationJobAuditEntry[]>()
+  private artifacts = new Map<string, { reference: string; qubo: NonNullable<OptimizationJobRecord['qubo']> }>()
+  private metadata = new Map<string, QuboMetadata>()
+  private auditSeq = 1
 
   async save(job: OptimizationJobRecord): Promise<OptimizationJobRecord> {
-    this.rows.set(job.id, structuredClone(job))
+    const stored = structuredClone(job)
+    // Mirror Postgres: large QUBOs are held by reference, not inline.
+    if (stored.quboStorage === 'artifact' && stored.qubo !== null && stored.quboArtifactReference) {
+      this.artifacts.set(stored.id, { reference: stored.quboArtifactReference, qubo: stored.qubo })
+      stored.qubo = null
+    }
+    // QUBO metadata audit record (migration 005) — derived, never raw objects.
+    if (job.qubo !== null) {
+      this.saveQuboMetadata(deriveQuboMetadata(job))
+    }
+    this.rows.set(stored.id, stored)
     return job
   }
 
@@ -104,8 +137,108 @@ export class MemoryOptimizationJobRepository implements OptimizationJobRepositor
     return row ? structuredClone(row) : null
   }
 
+  async list(limit = 200): Promise<OptimizationJobRecord[]> {
+    const rows = [...this.rows.values()]
+      .filter((row) => row.deletedAt === null)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+    return rows.map((row) => structuredClone(row))
+  }
+
+  async findQuboBuild(jobId: string): Promise<QuboBuild | null> {
+    const row = this.rows.get(jobId)
+    if (row?.qubo) return structuredClone(row.qubo)
+    const artifact = this.artifacts.get(jobId)
+    return artifact ? structuredClone(artifact.qubo) : null
+  }
+
+  async saveResult(result: OptimizationResultRecord): Promise<OptimizationResultRecord> {
+    // Mirror Postgres (migration 007): the classical benchmark reference snapshot
+    // is WRITE-ONCE — a re-save never overwrites a previously stored snapshot.
+    const existing = this.results.get(result.optimizationJobId)
+    const stored: OptimizationResultRecord = existing
+      ? {
+          ...result,
+          classicalSolver: existing.classicalSolver ?? result.classicalSolver,
+          classicalRuntimeMs: existing.classicalRuntimeMs ?? result.classicalRuntimeMs,
+          approximationRatio: existing.approximationRatio ?? result.approximationRatio,
+          approximationBasis: existing.approximationBasis ?? result.approximationBasis,
+          approximationInvalidReason: existing.approximationInvalidReason ?? result.approximationInvalidReason,
+          randomSeed: existing.randomSeed ?? result.randomSeed,
+          validationTimestamp: existing.validationTimestamp ?? result.validationTimestamp,
+          validationDetails: existing.validationDetails ?? result.validationDetails,
+          explanationMetadata: existing.explanationMetadata ?? result.explanationMetadata,
+        }
+      : result
+    this.results.set(result.optimizationJobId, structuredClone(stored))
+    return result
+  }
+
+  async findResult(jobId: string): Promise<OptimizationResultRecord | null> {
+    const result = this.results.get(jobId)
+    return result ? structuredClone(result) : null
+  }
+
+  async saveQuboMetadata(metadata: QuboMetadata): Promise<QuboMetadata> {
+    this.metadata.set(metadata.optimizationJobId, structuredClone(metadata))
+    return metadata
+  }
+
+  async findQuboMetadata(jobId: string): Promise<QuboMetadata | null> {
+    const metadata = this.metadata.get(jobId)
+    return metadata ? structuredClone(metadata) : null
+  }
+
+  async deleteJob(jobId: string, actor: string, reason: string): Promise<OptimizationJobRecord> {
+    const row = this.rows.get(jobId)
+    if (!row) throw new AppError(404, ErrorCodes.JOB_NOT_FOUND, `Optimization job '${jobId}' not found`)
+    const next = structuredClone(row)
+    next.deletedAt = new Date().toISOString()
+    next.deletedBy = actor
+    next.deleteReason = reason
+    this.rows.set(jobId, next)
+    this.audits.set(jobId, [
+      ...(this.audits.get(jobId) ?? []),
+      {
+        id: this.auditSeq++,
+        optimizationJobId: jobId,
+        action: 'soft_deleted',
+        actor,
+        reason,
+        createdAt: next.deletedAt,
+      },
+    ])
+    return next
+  }
+
+  async appendAudit(entry: {
+    optimizationJobId: string
+    action: string
+    actor: string
+    reason: string | null
+  }): Promise<OptimizationJobAuditEntry> {
+    const stored: OptimizationJobAuditEntry = {
+      id: this.auditSeq++,
+      optimizationJobId: entry.optimizationJobId,
+      action: entry.action,
+      actor: entry.actor,
+      reason: entry.reason,
+      createdAt: new Date().toISOString(),
+    }
+    this.audits.set(entry.optimizationJobId, [...(this.audits.get(entry.optimizationJobId) ?? []), stored])
+    return structuredClone(stored)
+  }
+
+  async listAudit(jobId: string): Promise<OptimizationJobAuditEntry[]> {
+    return (this.audits.get(jobId) ?? []).map((entry) => structuredClone(entry))
+  }
+
   async deleteAll(): Promise<void> {
     this.rows.clear()
+    this.results.clear()
+    this.audits.clear()
+    this.artifacts.clear()
+    this.metadata.clear()
   }
 }
 
@@ -160,6 +293,64 @@ export class MemoryModelComparisonRepository implements ModelComparisonRepositor
   async listMetricHistory(versionId: string): Promise<ModelMetricsHistoryItem[]> {
     const history = this.history.get(versionId) ?? []
     return [...history].sort((a, b) => b.evaluatedAt.localeCompare(a.evaluatedAt))
+  }
+}
+
+/**
+ * In-memory quantum job persistence (migration 006).
+ *
+ * Mirrors Postgres: a result row may only be stored for a job that exists
+ * (FK-like guard), and one result row per job is enforced by keying on the
+ * `<quantumJobId>-R1` id.
+ */
+export class MemoryQuantumJobRepository implements QuantumJobRepository {
+  private jobs = new Map<string, QuantumJobRecord>()
+  private results = new Map<string, QuantumResultRecord>()
+
+  async saveJob(job: QuantumJobRecord): Promise<QuantumJobRecord> {
+    const stored = structuredClone(job)
+    const existing = this.jobs.get(stored.id)
+    if (existing) {
+      // Lifecycle transitions update the mutable fields; identity timestamps
+      // (submitted_at / created_at) are preserved from the original row.
+      stored.submittedAt = existing.submittedAt
+      stored.createdAt = existing.createdAt
+    }
+    this.jobs.set(stored.id, stored)
+    return job
+  }
+
+  async findJobById(id: string): Promise<QuantumJobRecord | null> {
+    const row = this.jobs.get(id)
+    return row ? structuredClone(row) : null
+  }
+
+  async findJobsByOptimizationJobId(optimizationJobId: string): Promise<QuantumJobRecord[]> {
+    return [...this.jobs.values()]
+      .filter((row) => row.optimizationJobId === optimizationJobId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .map((row) => structuredClone(row))
+  }
+
+  async saveResult(result: QuantumResultRecord): Promise<QuantumResultRecord> {
+    if (!this.jobs.has(result.quantumJobId)) {
+      throw new AppError(500, ErrorCodes.INTERNAL_ERROR, `Cannot persist a result for unknown quantum job '${result.quantumJobId}'`)
+    }
+    if (result.id !== `${result.quantumJobId}-R1`) {
+      throw new AppError(500, ErrorCodes.INTERNAL_ERROR, `Quantum result id '${result.id}' does not match '<quantumJobId>-R1'`)
+    }
+    this.results.set(result.id, structuredClone(result))
+    return result
+  }
+
+  async findResult(quantumJobId: string): Promise<QuantumResultRecord | null> {
+    const row = this.results.get(`${quantumJobId}-R1`)
+    return row ? structuredClone(row) : null
+  }
+
+  async deleteAll(): Promise<void> {
+    this.jobs.clear()
+    this.results.clear()
   }
 }
 

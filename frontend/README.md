@@ -23,6 +23,28 @@ npm run preview   # preview the production build
 Requires `ai-service` to be running alongside (see `../ai-service/README.md`),
 or the API layer falls back to clearly-flagged sample data.
 
+## Tests
+
+Vitest + Testing Library + jsdom. Tests run with `VITE_USE_MOCK_DATA=false` so
+they exercise the **real HTTP client path** against mocked `fetch`.
+
+```sh
+npm test          # one-shot run (23 tests, headless)
+npm run test:watch # watch mode
+npm run lint      # oxlint
+```
+
+| Suite | File | Covers |
+| --- | --- | --- |
+| `services/aiService.test.ts` | `src/services/aiService` | success/malformed/API-error/timeout, mock gating dev-only, abortable timeout clearing, model comparison |
+| `hooks/useAIAnalytics.test.tsx` | `src/hooks/useAIAnalytics` | load/loading/error/refetch states |
+| `pages/AIAnalyticsDashboard.test.tsx` | `src/pages/AIAnalyticsDashboard` | all required UI states incl. error + empty + unavailable banners |
+| `components/ai/KPIRow.test.tsx` | `src/components/ai/KPIRow` | data-derived trends, mock-badge semantics |
+| `components/ai/emptyStates.test.tsx` | `src/components/ai/ForecastSection·PredictionsTable·RiskAnalyticsSection` | honest empty states instead of bare charts/tables |
+
+Test scaffolding lives in `src/test/` (`setup.ts` jest-dom + ResizeObserver +
+matchMedia stubs, `fixtures.ts` typed snapshot builders).
+
 ## Tech stack
 
 - React 19 + TypeScript, Vite 8, Tailwind CSS v4 (theming via `src/index.css`)
@@ -97,6 +119,31 @@ Invalid decoded solutions are labelled exactly
 `INVALID SOLUTION — NOT OPERATIONALLY RECOMMENDED` and never surfaced as a
 recommendation.
 
+## Page: `/qubo-visualization/:jobId`
+
+The auditable view of a job's **stored** QUBO formulation — reached from
+"Open QUBO visualization" on the optimization page. Every value is served by
+`GET /api/optimization/jobs/:id/qubo` (the backend is the single source of
+truth; no coefficient is rederived in React).
+
+- Five states, all driven by the payload's `available` field:
+  `loading` → `error` / `unavailable` / `invalid` / `valid`.
+- Header chips + summary cards (variables, linear terms, quadratic terms,
+  constraints, penalty `P`), objective expression panel, an N×2N
+  quadratic‖linear heatmap (windowed render above `n > 40`, zoom
+  `16/22/30/40`, positive/emerald vs negative/amber), constraint, variable
+  and top-bitstring panels, per-term panels, and action exports (QUBO JSON +
+  matrix CSV) opening audit modals.
+- `services/optimization/quboService.ts` — `fetchQuboFormulation` /
+  `fetchQuboPipeline` / `fetchQuboResult`; unwraps the envelope and
+  surfacing `unavailable`/`invalid` the moment the payload says so.
+- `components/qubo/` — `QuboSummaryCards`, `QuboMatrixHeatmap`,
+  `QuboTermPanels`, `QuboObjectivePanel`, `QuboConstraintPanel`,
+  `QuboVariablePanel`.
+- `types/optimization.ts` — `QuboFormulation` family mirroring the served
+  payload (`QuboAvailability`, `QuboConstraintRow`, `QuboPenaltyTerm`,
+  `QuboVariableDetail`, …).
+
 ## Source layout
 
 ```
@@ -104,18 +151,22 @@ src/
 ├── App.tsx                  # routing + layout + nav
 ├── pages/
 │   ├── AIAnalyticsDashboard.tsx
-│   └── QuantumOptimization.tsx   # composition of the 7 quantum panels
+│   ├── QuantumOptimization.tsx   # composition of the 7 quantum panels
+│   └── QuboVisualization.tsx     # stored-QUBO audit page (/qubo-visualization/:jobId)
 ├── components/
 │   ├── ai/                 # section components for the dashboard
 │   ├── charts/             # Recharts wrappers + theme
 │   ├── quantum/            # optimization UI: background, modal, controls, panels
+│   ├── qubo/               # QUBO visualization panels: cards, heatmap, terms, objective, constraint, variable
 │   └── ui/                 # GlassCard, KPICard, Skeletons, banners, indicators
 ├── hooks/
 │   ├── useAIAnalytics.ts
 │   └── useQuantumOptimization.ts
 ├── services/
 │   ├── aiService.ts        # API client (fetch + timeout + error contract)
-│   └── optimization/       # adapter seam + mock/http implementations + simulator
+│   ├── authService.ts      # auth + unauthorized notification helper
+│   └── optimization/       # adapter seam + mock/http implementations + simulator + quboService
+├── auth/                   # AuthContext (role-aware guards; operator runs optimizations)
 ├── lib/format.ts · risk.ts · quantum.ts
 └── types/optimization.ts   # optimization domain contract; types/ai.ts for analytics
 ```
@@ -125,5 +176,4 @@ src/
 | Variable | Default | Description |
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | `''` | Override the API base (empty = Vite dev proxy). |
-| `VITE_USE_MOCK_DATA` | `'true'` | `'false'` → production: live backend for analytics AND the HTTP quantum adapter (`httpAdapter.ts`); the dev simulator chunk is never loaded. Otherwise the analytics sample fallback is allowed and the optimization page runs the flagged mock adapter (`mockAdapter.ts`). |
-| `VITE_USE_MOCK_DATA` | `true` | `false` disables the sample-data fallback. |
+| `VITE_USE_MOCK_DATA` | `''` | `'false'` forces live backends even in dev: disables the AI Analytics sample-data fallback and makes Quantum Optimization select the HTTP adapter. Unset/other → AI Analytics sample fallback is **DEV-only** (`import.meta.env.DEV`, never in production builds); the Optimization page keeps its existing mock/http adapter selection (`services/optimization/adapter.ts`). |

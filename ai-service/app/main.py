@@ -1,3 +1,11 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: ai-service | Owner: Nanda (API contract) + Navya (engine seam) | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README:
+# no fabricated data, no invented metrics, every surrogate or fallback is
+# clearly labelled, and no quantum speedup is ever claimed.
+
 """Q-FLARE AI service application entry point.
 
 Runs the forecasting engine behind a stable REST contract consumed by the Node
@@ -58,3 +66,11 @@ def health() -> dict:
             "status": "online",
         }
     )
+
+
+if __name__ == "__main__":
+    # `python -m app.main` honours AI_SERVICE_HOST / AI_SERVICE_PORT. The
+    # documented uvicorn command (`uvicorn app.main:app`) keeps its own flags.
+    import uvicorn
+
+    uvicorn.run("app.main:app", host=config.HOST, port=config.PORT, reload=False)

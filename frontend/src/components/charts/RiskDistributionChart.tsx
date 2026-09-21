@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import type { RiskDistribution } from '../../types/ai'
 import { riskStyle } from '../../lib/risk'
@@ -17,7 +24,11 @@ export function RiskDistributionChart({ data, height = 200 }: RiskDistributionCh
         <PieChart>
           <Tooltip
             contentStyle={tooltipStyle}
-            formatter={(value, name) => [`${value} stations`, `Risk ${String(name).replace('riskLevel', '')}`]}
+            formatter={(value, name, item) => {
+              const payload = (item as { payload?: RiskDistribution } | undefined)?.payload
+              const level = payload?.riskLevel ?? String(name).replace(/^riskLevel/, '').replace(/^Risk /, '')
+              return [`${value} stations`, `Risk ${String(level).trim()}`]
+            }}
           />
           <Pie
             data={data}

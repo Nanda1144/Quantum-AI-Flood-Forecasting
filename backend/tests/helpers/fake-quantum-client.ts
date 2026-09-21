@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Fake quantum FastAPI client for orchestration tests.
  *
  * Deterministic by construction: QUBOs are built with the same backend math the
@@ -8,7 +15,14 @@
  *
  *   - `quboError`            → QUBO generation failure (createQubo throws).
  *   - `optimizeErrorFor`     → per-mode QAOA/hardware failure (optimize throws).
+ *   - `resultErrorFor`       → per-mode post-submission failure (getResult throws;
+ *                              the service accepted the job, then failed) —
+ *                              mirrors real executor down/abort behavior.
  *   - `resultOverrides`      → corrupt the decoded outcome (bad bitstring, …).
+ *
+ * Since a real service persists a job id per accepted submission, optimize()
+ * hands back a fresh job id (execution id → job id) and every later result for
+ * that execution carries the same id, which the persistence tests rely on.
  */
 
 import { QuantumServiceError, type CreateQuboInput, type OptimizeQaoaInput, type OptimizeAccepted, type QuantumExecutionResult, type QuantumServiceClient, type QuboCreated } from '../../src/clients/quantum-service.client.ts'
@@ -16,17 +30,23 @@ import { buildQubo, greedyDecode } from '../../src/lib/optimization/qubo.ts'
 import type { CandidateLocation, QuantumBackend, QuantumExecutionMode, RunOptimizationRequest } from '../../src/types/optimization.ts'
 
 export type OptimizeFailureRule = (mode: QuantumExecutionMode, backend: QuantumBackend) => Error | null
+export type ResultFailureRule = (mode: QuantumExecutionMode, backend: QuantumBackend) => Error | null
 
 export class FakeQuantumServiceClient implements QuantumServiceClient {
   quboError: Error | null = null
   optimizeErrorFor: OptimizeFailureRule = () => null
-  resultOverrides: Partial<Omit<QuantumExecutionResult, 'executionId' | 'quboId' | 'algorithm' | 'status'>> = {}
+  resultErrorFor: ResultFailureRule = () => null
+  /** When false, optimize() returns no jobId and getResult() supplies it. */
+  jobIdFromOptimize = true
+  resultOverrides: Partial<Omit<QuantumExecutionResult, 'executionId' | 'quboId' | 'algorithm' | 'status' | 'jobId'>> = {}
 
   createQuboCalls = 0
   optimizeCalls: OptimizeQaoaInput[] = []
 
   private quboInput: CreateQuboInput | null = null
   private optimizeInput: OptimizeQaoaInput | null = null
+  /** execution id → the quantum service's job id for that submission. */
+  private jobIds = new Map<string, string>()
 
   async createQubo(input: CreateQuboInput): Promise<QuboCreated> {
     this.createQuboCalls += 1
@@ -42,7 +62,10 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
     this.optimizeInput = input
     const failure = this.optimizeErrorFor(input.mode, input.backend)
     if (failure) throw failure
-    return { executionId: `exec-${this.optimizeCalls.length}` }
+    const executionId = `exec-${this.optimizeCalls.length}`
+    const jobId = `jb-${this.optimizeCalls.length}`
+    this.jobIds.set(executionId, jobId)
+    return this.jobIdFromOptimize ? { executionId, jobId } : { executionId }
   }
 
   async getResult(executionId: string): Promise<QuantumExecutionResult> {
@@ -50,11 +73,14 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
     const candidates = input?.candidates ?? []
     const mode = this.optimizeInput?.mode ?? 'simulator'
     const backend = this.optimizeInput?.backend ?? 'qflare_simulator_statevector'
+    const failure = this.resultErrorFor(mode, backend)
+    if (failure) throw failure
     const request = input ? requestFromQuboInput(input) : null
     const topBitstring = request ? greedyDecode(request, candidates).bitstring : '0'.repeat(candidates.length)
 
     const base: QuantumExecutionResult = {
       executionId,
+      jobId: this.jobIds.get(executionId),
       quboId: input ? `qubo-${this.createQuboCalls}` : 'qubo-1',
       algorithm: 'qaoa',
       status: 'completed',
@@ -69,6 +95,7 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
       topBitstring,
       energyHistory: [{ iteration: 1, energy: -1.42 }, { iteration: 2, energy: -1.41 }],
       executionTimeMs: 4,
+      objectiveValue: -1.42,
       quantumAdvantageClaimed: false,
     }
     return { ...base, ...this.resultOverrides }
@@ -80,6 +107,27 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
       candidateMode === mode
         ? new QuantumServiceError(mode === 'ibm_hardware' ? 'HARDWARE_UNAVAILABLE' : 'AER_UNAVAILABLE', 503, `executor '${candidateMode}' unavailable`)
         : null
+  }
+
+  /** Convenience: fail getResult for a specific mode (service accepted, then failed). */
+  failResult(mode: QuantumExecutionMode): void {
+    this.resultErrorFor = (candidateMode, candidateBackend) =>
+      candidateMode === mode
+        ? new QuantumServiceError(
+            candidateBackend === 'ibm_kyiv' ? 'HARDWARE_EXECUTION_FAILED' : 'AER_EXECUTION_FAILED',
+            500,
+            `executor '${candidateBackend}' failed after accepting the job`,
+          )
+        : null
+  }
+
+  /** Reset all bookkeeping (execution→job id map, counters, captured inputs). */
+  resetQuantumPersistence(): void {
+    this.jobIds.clear()
+    this.createQuboCalls = 0
+    this.optimizeCalls = []
+    this.quboInput = null
+    this.optimizeInput = null
   }
 }
 

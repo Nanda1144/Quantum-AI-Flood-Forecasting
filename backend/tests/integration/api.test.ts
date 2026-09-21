@@ -1,10 +1,17 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import '../helpers/env.js'
 import assert from 'node:assert/strict'
 import { describe, it, before } from 'node:test'
 import request from 'supertest'
 import { createApp } from '../../src/app.ts'
 import { buildContainer, type Container } from '../../src/container.ts'
-import { FakeForecastClient, FAKE_FORECAST, FAKE_MODEL } from '../helpers/fake-ai-client.ts'
+import { FakeForecastClient, FAKE_FORECAST, FAKE_MODEL, FAKE_RISK } from '../helpers/fake-ai-client.ts'
 import { MemoryModelComparisonRepository } from '../../src/repositories/memory/repositories.ts'
 import type { ModelComparisonRow, ModelMetricsHistoryItem } from '../../src/types/domain.ts'
 import type { Forecast } from '../../src/types/domain.ts'
@@ -131,8 +138,37 @@ describe('integration: API', () => {
       assert.equal(snapshot.recentPredictions.length, 1)
       assert.equal(snapshot.recentPredictions[0].forecastId, FAKE_FORECAST.forecast_id)
       assert.equal(snapshot.activeModel.modelId, FAKE_MODEL.model_id)
+      assert.equal(snapshot.activeModel.derived, undefined)
       assert.equal(snapshot.systemHealth.status, 'online')
       assert.equal(snapshot.optimizationReadiness.ready, true)
+
+      // Thresholds flow engine → backend → snapshot (never derived in the backend).
+      assert.equal(snapshot.thresholds.thresholdLevel, FAKE_RISK.threshold_level)
+      assert.equal(snapshot.thresholds.label, FAKE_RISK.threshold_label)
+      // API latency comes from the AI health probe.
+      assert.equal(snapshot.systemHealth.apiLatencyMs, 42)
+    })
+
+    it('labels the active model as derived when the registry has no matching row', async () => {
+      const orphanClient = new FakeForecastClient()
+      orphanClient.getModels = async () => []
+      const orphanContainer = await buildContainer({ aiClient: orphanClient })
+      const orphanApp = await createApp(orphanContainer)
+
+      const login = await request(orphanApp)
+        .post('/api/auth/login')
+        .send({ username: 'admin', password: 'qflare-admin' })
+      const token = login.body.data.token
+
+      const res = await request(orphanApp)
+        .get('/api/ai/analytics')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+
+      const model = res.body.data.activeModel
+      assert.equal(model.modelId, FAKE_FORECAST.model_id)
+      assert.equal(model.derived, true)
+      assert.deepEqual(model.metrics, {})
     })
   })
 
@@ -764,6 +800,66 @@ describe('integration: Registry APIs', () => {
         .patch('/api/ai/models/2/status')
         .set('Authorization', `Bearer ${await adminToken()}`)
         .expect(404)
+    })
+  })
+
+  describe('empty registry dataset', () => {
+    let emptyApp: Express
+
+    before(async () => {
+      const emptyContainer = await buildContainer({
+        aiClient: new FakeForecastClient(),
+        comparisonRepo: new MemoryModelComparisonRepository([]),
+      })
+      emptyApp = await createApp(emptyContainer)
+    })
+
+    async function adminToken1(): Promise<string> {
+      const login = await request(emptyApp)
+        .post('/api/auth/login')
+        .send({ username: 'admin', password: 'qflare-admin' })
+      return login.body.data.token
+    }
+
+    it('returns an empty list with total 0', async () => {
+      const res = await request(emptyApp)
+        .get('/api/ai/models')
+        .set('Authorization', `Bearer ${await adminToken1()}`)
+        .expect(200)
+      assert.equal(res.body.success, true)
+      assert.equal(res.body.data.total, 0)
+      assert.deepEqual(res.body.data.items, [])
+      assert.equal(res.body.data.totalPages, 1)
+    })
+
+    it('returns 404 for any id in the compare endpoint', async () => {
+      const res = await request(emptyApp)
+        .post('/api/ai/models/compare')
+        .set('Authorization', `Bearer ${await adminToken1()}`)
+        .send({ model_ids: ['1', '2'] })
+        .expect(404)
+      assert.equal(res.body.error.code, 'MODEL_NOT_FOUND')
+      assert.deepEqual(res.body.error.details.missingModelIds, ['1', '2'])
+    })
+
+    it('returns 404 for model detail and metrics', async () => {
+      await request(emptyApp)
+        .get('/api/ai/models/1')
+        .set('Authorization', `Bearer ${await adminToken1()}`)
+        .expect(404)
+      await request(emptyApp)
+        .get('/api/ai/models/1/metrics')
+        .set('Authorization', `Bearer ${await adminToken1()}`)
+        .expect(404)
+    })
+
+    it('returns an empty comparison dataset', async () => {
+      const res = await request(emptyApp)
+        .get('/api/ai/models/comparison')
+        .set('Authorization', `Bearer ${await adminToken1()}`)
+        .expect(200)
+      assert.equal(res.body.success, true)
+      assert.deepEqual(res.body.data.items, [])
     })
   })
 })

@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Contract consumed from the AI FastAPI service (`../ai-service`).
  *
  * Navya owns the forecasting models. She implements the FastAPI routes and may
@@ -50,6 +57,9 @@ export interface RiskAnalyticsContract {
   distribution: RiskDistributionContract[]
   summary: { high: number; medium: number; low: number; critical: number }
   overall_trend: TrendDirection
+  /** Flood-stage reference in metres, when the engine provides one. */
+  threshold_level?: number | null
+  threshold_label?: string | null
 }
 
 export interface ModelMetricsContract {

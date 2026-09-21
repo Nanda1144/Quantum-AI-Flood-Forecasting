@@ -1,3 +1,11 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: ai-service | Owner: Nanda (API contract) + Navya (engine seam) | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README:
+# no fabricated data, no invented metrics, every surrogate or fallback is
+# clearly labelled, and no quantum speedup is ever claimed.
+
 """Pydantic schema definitions — the public contract of the AI service."""
 
 from __future__ import annotations
@@ -78,6 +86,10 @@ class RiskAnalytics(BaseModel):
     distribution: list[RiskDistribution]
     summary: RiskSummary
     overall_trend: TrendDirection
+    # Flood-stage reference for the modelled reach, in metres. The dashboard
+    # renders it as the threshold line; None means the engine has no threshold.
+    threshold_level: float | None = Field(default=None, ge=0.0)
+    threshold_label: str | None = None
 
 
 class ModelMetrics(BaseModel):
@@ -110,10 +122,6 @@ class PredictionRecord(BaseModel):
 
 class SeriesResponse(BaseModel):
     points: list[ForecastPoint]
-
-
-class PredictionsResponse(BaseModel):
-    predictions: list[PredictionRecord]
 
 
 class Envelope(BaseModel):

@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * GIS candidate + planning-constraint sources consumed by the optimization
  * orchestrator.
  *
@@ -91,10 +98,15 @@ export class ServerConstraintsSource implements ConstraintsSource {
     coverageRequirements: CoverageRequirement[]
     candidateCount: number
   }): Promise<ResourceConstraintsInput> {
+    // Only the planning module's OWN coverage floors belong here. The
+    // orchestrator merges the operator-specified requirements separately
+    // (`[...resolved.coverageRequirements, ...request.coverageRequirements]`),
+    // so echoing `request.coverageRequirements` back would duplicate every
+    // operator floor and every derived violation.
     return {
       maxSensors: request.maxSensors,
       budgetK: request.budgetK,
-      coverageRequirements: request.coverageRequirements,
+      coverageRequirements: [],
     }
   }
 }

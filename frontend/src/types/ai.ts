@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
 export type ModelStatus = 'ready' | 'training' | 'degraded' | 'offline'
@@ -81,6 +88,11 @@ export interface ModelInfo {
   lastEvaluatedAt: string
   status: ModelStatus
   metrics: ModelMetrics
+  /**
+   * True when the backend assembled this record from the forecast because the
+   * model registry had no matching row — never mistaken for registry data.
+   */
+  derived?: boolean
 }
 
 export interface RecentPrediction {

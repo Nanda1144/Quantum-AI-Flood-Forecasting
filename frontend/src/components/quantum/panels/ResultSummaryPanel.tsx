@@ -1,4 +1,12 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { Ban, CheckCircle2, Gauge, ShieldCheck, XCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { QUANTUM_BACKENDS, formatScore } from '../../../lib/quantum'
 import type { OptimizationResult } from '../../../types/optimization'
 import type { RunState } from '../../../hooks/useQuantumOptimization'
@@ -20,6 +28,7 @@ function KPI({ label, value, accent = 'text-mist-100' }: { label: string; value:
 }
 
 export function ResultSummaryPanel({ result, runState }: ResultSummaryPanelProps) {
+  const navigate = useNavigate()
   if (!result) {
     return (
       <QuantumPanel
@@ -43,6 +52,17 @@ export function ResultSummaryPanel({ result, runState }: ResultSummaryPanelProps
   return (
     <QuantumPanel step={6} icon={Gauge} title="Result summary" description="Signed decision document" status="done">
       <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] text-mist-500">Stored formulation and audit trail are on the dedicated page.</p>
+          <button
+            type="button"
+            onClick={() => navigate(`/qubo-visualization/${encodeURIComponent(result.jobId)}`)}
+            className="inline-flex items-center gap-2 rounded-lg border border-forest-600 bg-forest-800/70 px-3 py-1.5 text-xs text-mist-100 transition-colors hover:border-emerald-500/60 hover:text-emerald-300"
+          >
+            <Gauge size={13} className="text-ai-300" aria-hidden="true" />
+            Open QUBO visualization
+          </button>
+        </div>
         {/* ---- Operational verdict — never recommend an invalid solution ---- */}
         <div
           role="status"

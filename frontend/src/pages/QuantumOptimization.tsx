@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { ArrowLeft } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { QuantumCircuitBackground } from '../components/quantum/QuantumCircuitBackground'
@@ -91,13 +98,12 @@ export function QuantumOptimization() {
                 runState={q.runState}
                 canRun={canRun}
                 runError={q.runError}
-                adapterMode={q.adapterMode}
                 onRun={q.startRun}
                 onCancel={q.cancelRun}
               />
               <PipelinePanel stages={q.stages} runState={q.runState} />
               <ResultSummaryPanel result={q.result} runState={q.runState} />
-              <ActionsPanel hasResult={q.result !== null} adapterMode={q.adapterMode} onOpen={q.openModal} />
+              <ActionsPanel hasResult={q.result !== null} adapterMode={q.adapterMode} onOpen={q.openModal} jobId={q.result?.jobId} />
             </div>
           </div>
         )}

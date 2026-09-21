@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 /** Assembles the composite analytics snapshot for the dashboard. */
 
 import type { ForecastClient } from '../clients/ai-service.client.ts'
@@ -28,13 +35,22 @@ export class AnalyticsService {
     const activeModel = (await this.modelRepo.findById(forecast.modelId)) ?? (await this.modelRepo.findActive())
 
     // Best-effort enrichment from the AI service — failures degrade gracefully.
-    const [series, risk, recent] = await Promise.all([
+    const [series, risk, recent, health] = await Promise.all([
       this.client.getForecastSeries().catch(() => ([] as ForecastPointContract[])),
       this.client.getRiskAnalytics().catch(() => (null as RiskAnalyticsContract | null)),
       this.client.getRecentPredictions().catch(() => []),
+      this.client.health().catch(() => null),
     ])
 
     const readiness = await this.optimizationRepo.findByForecastId(forecast.forecastId)
+
+    // Thresholds are engine-supplied (never derived here). Absent when the
+    // engine has no flood-stage reference.
+    const thresholds: AnalyticsSnapshot['thresholds'] = {}
+    if (risk && typeof risk.threshold_level === 'number') {
+      thresholds.thresholdLevel = risk.threshold_level
+      if (risk.threshold_label) thresholds.label = risk.threshold_label
+    }
 
     return {
       forecast: toReportForecast(forecast),
@@ -44,7 +60,7 @@ export class AnalyticsService {
         observedWaterLevel: pt.observed_water_level,
         floodProbability: pt.flood_probability,
       })),
-      thresholds: {},
+      thresholds,
       riskAnalytics: toFrontendRiskAnalytics(risk),
       activeModel: toFrontendModel(activeModel) ?? {
         modelId: forecast.modelId,
@@ -55,6 +71,7 @@ export class AnalyticsService {
         lastTrainedAt: forecast.createdAt,
         lastEvaluatedAt: forecast.createdAt,
         metrics: {},
+        derived: true,
       },
       recentPredictions: recent.map((p) => ({
         forecastId: p.forecast_id,
@@ -83,8 +100,8 @@ export class AnalyticsService {
             ready: true,
           },
       systemHealth: {
-        status: isStale ? 'degraded' : 'online',
-        apiLatencyMs: null,
+        status: source === 'ai' && !isStale ? 'online' : 'degraded',
+        apiLatencyMs: health?.latencyMs ?? null,
         lastSuccessfulPrediction: forecast.predictionTimestamp,
         dataFreshness: formatFreshness(forecast.createdAt),
       },

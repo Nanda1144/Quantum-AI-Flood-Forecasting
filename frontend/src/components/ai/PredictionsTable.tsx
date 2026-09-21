@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { History } from 'lucide-react'
 import type { RecentPrediction } from '../../types/ai'
 import { SectionHeader } from '../ui/SectionHeader'
@@ -24,6 +31,12 @@ export function PredictionsTable({ predictions }: PredictionsTableProps) {
       />
 
       <div className="mt-4 -mx-1 overflow-x-auto px-1 pb-1">
+        {predictions.length === 0 ? (
+          <div className="rounded-lg border border-forest-600/70 bg-forest-800/60 px-4 py-8 text-center">
+            <p className="text-sm font-semibold text-mist-200">No recent predictions</p>
+            <p className="mt-1 text-xs text-mist-500">The AI service has not produced any prediction records yet.</p>
+          </div>
+        ) : (
         <table className="w-full min-w-[680px] text-left text-xs" role="table">
           <thead>
             <tr className="border-b border-forest-600/60 text-[11px] font-semibold uppercase tracking-wider text-mist-500">
@@ -69,6 +82,7 @@ export function PredictionsTable({ predictions }: PredictionsTableProps) {
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   )

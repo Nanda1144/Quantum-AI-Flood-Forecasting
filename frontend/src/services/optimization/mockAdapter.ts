@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Development-only optimization adapter.
  *
  * Instantiated exclusively by `getOptimizationAdapter()` when the
@@ -248,6 +255,7 @@ export class MockOptimizationAdapter implements OptimizationAdapter {
             constraintViolations: verdict.violations,
             validationStatus: verdict.violations.length === 0 ? 'valid' : 'invalid',
             validationSummary: verdict.summary,
+            bitstring: selected.bitstring,
             qubo: qubo!.doc,
             measurementCounts: topCounts(counts, 8),
             energyHistory: energyCurve(metrics.objectiveValue, request.layers),

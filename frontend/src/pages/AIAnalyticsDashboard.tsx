@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { useEffect, useRef } from 'react'
 import { HeaderSection } from '../components/ai/HeaderSection'
 import { KPIRow } from '../components/ai/KPIRow'
@@ -76,8 +83,13 @@ export function AIAnalyticsDashboard() {
         )}
 
         {/* ---- Unavailable (system-level flag in snapshot) ---- */}
-        {!loading && snapshot && snapshot.systemHealth?.status === 'unavailable' && (
-          <StateBanner kind="unavailable" title="AI service is unavailable" message="The AI inference service is not responding. Showing last known data." />
+        {!loading && snapshot && snapshot.systemHealth?.status !== 'online' && (
+          <StateBanner
+            kind="unavailable"
+            title="AI service is unavailable"
+            message="The AI inference service is not responding. Showing last known data."
+            onRetry={handleRefresh}
+          />
         )}
 
         {/* ---- Full Dashboard ---- */}

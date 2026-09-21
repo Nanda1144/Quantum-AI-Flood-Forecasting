@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Fake AI FastAPI client used by tests — controllable responses/failures so we
  * never need a live Python service or a database.
  */
@@ -57,6 +64,8 @@ export const FAKE_RISK: RiskAnalyticsContract = {
   ],
   summary: { high: 4, medium: 6, low: 12, critical: 1 },
   overall_trend: 'up',
+  threshold_level: 8.0,
+  threshold_label: 'Flood stage reference',
 }
 
 export const FAKE_PREDICTIONS: PredictionRecordContract[] = [

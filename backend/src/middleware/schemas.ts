@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 /** Zod schemas for request validation. Invalid data → 422, never coerced. */
 
 import { z } from 'zod'
@@ -138,9 +145,33 @@ export const optimizationJobParamsSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/, 'job id must be a valid identifier'),
 })
 
+/**
+ * `DELETE /api/optimization/jobs/:id` body. Deleting a research result is
+ * write-once: every authorized deletion must carry an auditable reason.
+ */
+export const jobDeletionBodySchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, 'a deletion reason of at least 3 characters is required')
+    .max(500, 'deletion reason must be at most 500 characters'),
+})
+
 /** `GET /api/optimization/inputs` query (camelCase per the frontend adapter). */
 export const optimizationInputsQuerySchema = z.object({
   candidateCount: z.coerce.number().int().min(2).max(100).default(24),
   forecast: forecastIdSchema.optional(),
   risk: riskLevelSchema.optional(),
+})
+
+/**
+ * `GET /api/benchmarks` query filters. Optional AND-semantics; `from`/`to`
+ * bound the experiment date (job creation time, ISO datetime).
+ */
+export const benchmarkListQuerySchema = z.object({
+  problem_type: z.enum(['sensor_placement', 'resource_allocation']).optional(),
+  algorithm: z.string().trim().min(1).max(64).optional(),
+  execution_mode: z.enum(['simulator', 'aer', 'ibm_hardware']).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
 })

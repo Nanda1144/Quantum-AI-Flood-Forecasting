@@ -1,21 +1,36 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import type {
   AISnapshot,
   APIError,
   Forecast,
   ModelComparisonQuery,
   ModelComparisonResult,
+  ModelComparisonRow,
   ModelInfo,
   RecentPrediction,
   RiskAnalytics,
   AIServiceHealth,
   OptimizationReadiness,
 } from '../types/ai'
+import { authHeaders, notifyUnauthorized } from './authService'
 
 /** Base URL for the Node backend. Empty string = same origin (Vite dev proxy -> :3000). */
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
-/** Set VITE_USE_MOCK_DATA=false to disable the sample-data fallback entirely. */
-const ALLOW_MOCK_DATA: boolean = import.meta.env.VITE_USE_MOCK_DATA !== 'false'
+/**
+ * Whether the clearly-flagged sample-data fallback is enabled. Evaluated at
+ * call time so tests/env can toggle it. Production builds never allow mock
+ * data regardless of VITE_USE_MOCK_DATA.
+ */
+export function shouldAllowMockData(): boolean {
+  return import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_DATA !== 'false'
+}
 
 const REQUEST_TIMEOUT_MS = 6000
 
@@ -32,8 +47,12 @@ async function fetchJson<T>(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promi
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...authHeaders() },
     })
+    if (response.status === 401) {
+      notifyUnauthorized()
+      throw { code: 'UNAUTHORIZED', message: 'Session expired or not authenticated — please sign in' } satisfies APIError
+    }
     if (!response.ok) {
       let message = `Request to ${path} failed with status ${response.status}`
       let code = 'HTTP_ERROR'
@@ -48,7 +67,8 @@ async function fetchJson<T>(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promi
       }
       throw { code, message }
     }
-    return (await response.json()) as T
+    const body = (await response.json()) as { data?: unknown }
+    return (body.data ?? body) as T
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw { code: 'TIMEOUT', message: `Request to ${path} timed out` } satisfies APIError
@@ -260,7 +280,10 @@ export async function loadAIAnalytics(): Promise<AILoadResult> {
     const snapshot = normalizeSnapshot(await fetchJson<AISnapshot>('/api/ai/analytics'))
     return { snapshot, isMock: false }
   } catch (error) {
-    if (ALLOW_MOCK_DATA) {
+    // A 401 is an auth problem, never a connection problem — surface it so the
+    // session is cleared and the login screen returns instead of silently
+    // showing local sample data while still appearing authenticated.
+    if (shouldAllowMockData() && (error as APIError).code !== 'UNAUTHORIZED') {
       // Small delay so the loading skeleton is visible and state transitions are observable.
       await new Promise((resolve) => setTimeout(resolve, 700))
       return { snapshot: normalizeSnapshot(getMockSnapshot()), isMock: true }
@@ -350,6 +373,123 @@ export const aiApi = {
     const raw = await fetchJson<ModelComparisonResult>(`/api/ai/models/comparison${qs ? `?${qs}` : ''}`)
     return normalizeModelComparison(raw)
   },
+}
+
+/* ------------------------------------------------------------------ */
+/* Sample-data fallback for the comparison page. Mirror of the         */
+/* analytics fallback: real backend rows are the primary path; when    */
+/* the backend is unreachable (or rejects the request) and sample data */
+/* is allowed, clearly-labelled local rows keep the page demonstrable. */
+/* ------------------------------------------------------------------ */
+
+function buildMockComparisonResult(): ModelComparisonResult {
+  const items: ModelComparisonRow[] = [
+    {
+      modelId: 'SAMPLE-001',
+      name: 'GRU FloodNet Ensemble',
+      version: 'v1.2',
+      algorithm: 'Gated Recurrent Unit Ensemble',
+      status: 'active',
+      dataset: 'sample://training/panama-basin-2026',
+      artifactReference: 'sample://artifacts/GRU-FloodNet-v1.2',
+      metrics: { rmse: 0.21, mae: 0.16, r2: 0.93, nse: 0.91 },
+      trainingTimeMs: 3600000,
+      inferenceTimeMs: 3,
+      evaluatedAt: hoursAgo(6),
+      evaluationDataset: 'sample://eval/gatun-basin-2026',
+    },
+    {
+      modelId: 'SAMPLE-002',
+      name: 'Deep-Transformer',
+      version: 'v2.0-dev',
+      algorithm: 'Temporal Transformer',
+      status: 'development',
+      dataset: 'sample://training/panama-basin-2026',
+      artifactReference: 'sample://artifacts/Deep-Transformer-v2.0-dev',
+      metrics: { rmse: 0.149, mae: 0.112, r2: 0.979, nse: 0.976 },
+      trainingTimeMs: 5400000,
+      inferenceTimeMs: 1,
+      evaluatedAt: hoursAgo(12),
+      evaluationDataset: 'sample://eval/gatun-basin-2026',
+    },
+    {
+      modelId: 'SAMPLE-003',
+      name: 'XGBoost-Rainfall',
+      version: 'v1.0',
+      algorithm: 'Gradient Boosted Trees',
+      status: 'active',
+      dataset: 'sample://training/gatun-basin-2026',
+      artifactReference: 'sample://artifacts/XGBoost-Rainfall-v1.0',
+      metrics: { rmse: 0.27, mae: 0.21, r2: 0.88, nse: 0.87 },
+      trainingTimeMs: 900000,
+      inferenceTimeMs: 1,
+      evaluatedAt: hoursAgo(48),
+      evaluationDataset: 'sample://eval/gatun-basin-2026',
+    },
+    {
+      modelId: 'SAMPLE-004',
+      name: 'CNN-Rainfall',
+      version: 'v2.1-dev',
+      algorithm: '1D Temporal CNN',
+      status: 'development',
+      dataset: 'sample://training/panama-basin-2026',
+      artifactReference: 'sample://artifacts/CNN-Rainfall-v2.1-dev',
+      metrics: { rmse: 0.441, mae: 0.332, r2: 0.847, nse: 0.847 },
+      trainingTimeMs: 2680000,
+      inferenceTimeMs: 1,
+      evaluatedAt: hoursAgo(24),
+      evaluationDataset: 'sample://eval/panama-basin-2026',
+    },
+    {
+      modelId: 'SAMPLE-005',
+      name: 'LSTM Cascade',
+      version: 'v1.1',
+      algorithm: 'Stacked LSTM',
+      status: 'retired',
+      dataset: 'sample://training/gatun-basin-2026',
+      artifactReference: 'sample://artifacts/LSTM-Cascade-v1.1',
+      metrics: { rmse: 0.38, mae: 0.29, r2: 0.81, nse: 0.8 },
+      trainingTimeMs: 4200000,
+      inferenceTimeMs: 5,
+      evaluatedAt: hoursAgo(120),
+      evaluationDataset: 'sample://eval/gatun-basin-2026',
+    },
+  ]
+  const evaluated = items.map((row) => row.evaluatedAt).filter(Boolean).sort()
+  return {
+    items,
+    evaluatedRange: { from: evaluated[0] ?? null, to: evaluated[evaluated.length - 1] ?? null },
+    evaluationDatasets: [...new Set(items.map((row) => row.evaluationDataset).filter(Boolean))],
+  }
+}
+
+export interface ComparisonLoadResult {
+  result: ModelComparisonResult
+  isMock: boolean
+}
+
+/**
+ * Loads model comparison for the given query.
+ *
+ * Prefers the backend endpoint GET /api/ai/models/comparison. When the backend
+ * is unavailable (or rejects the request) and sample data is allowed, falls
+ * back to clearly flagged local rows so the page remains demonstrable. Sample
+ * rows carry `sample://` lineage and are surfaced to the UI as sample data.
+ */
+export async function loadModelComparison(query: ModelComparisonQuery = {}): Promise<ComparisonLoadResult> {
+  try {
+    const result = await aiApi.getModelsComparison(query)
+    return { result, isMock: false }
+  } catch (error) {
+    // Auth rejections surface instead of swapping to sample rows — access control
+    // must stay real (see loadAIAnalytics).
+    if (shouldAllowMockData() && (error as APIError).code !== 'UNAUTHORIZED') {
+      // Small delay so the loading skeleton is visible and state transitions are observable.
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      return { result: buildMockComparisonResult(), isMock: true }
+    }
+    throw error
+  }
 }
 
 export { fetchJson }

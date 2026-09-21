@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Quantum Optimization domain contract.
  *
  * The frontend talks to a pluggable adapter (see `services/optimization/`):
@@ -233,10 +240,115 @@ export interface OptimizationResult {
   constraintViolations: ConstraintViolation[]
   validationStatus: 'valid' | 'invalid'
   validationSummary: string
+  /** Decoded solution bitstring reported verbatim by the executor. */
+  bitstring: string
   qubo: QuboDocument
   measurementCounts: MeasurementCount[]
   energyHistory: EnergyPoint[]
   classicalComparison: ClassicalComparison
+}
+
+/* ------------------------------------------------------------------ */
+/* Quantum Job Status                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Job states surfaced by the gateway. `queued` and `running` are live —
+ * the status page polls until a terminal state (completed / failed /
+ * timed_out / cancelled / invalid) is reached.
+ */
+export type QuantumJobStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'timed_out'
+  | 'cancelled'
+  | 'invalid'
+
+/** Runtime modes reported by the gateway (wider than the UI's two-way split). */
+export type QuantumExecutionMode = 'simulator' | 'aer' | 'ibm_hardware'
+
+/** Mode the job actually ran in — `classical` after a classical-only fallback. */
+export type ExecutionModeUsed = QuantumExecutionMode | 'classical'
+
+/** Backend ids the gateway may report (UI selectable set + executor extras + classical). */
+export type QuantumRunBackend = QuantumBackend | 'qflare_simulator_statevector' | 'classical'
+
+export type FallbackPolicy = 'retry_simulator' | 'classical_only' | 'error'
+
+/** Resolved constraint set the gateway preserved with a job. */
+export interface ResolvedConstraints {
+  maxSensors: number
+  budgetK: number | null
+  coverageRequirements: CoverageRequirement[]
+}
+
+/** Objective configuration the gateway preserved with a job. */
+export interface ObjectiveConfiguration {
+  weights: ObjectiveWeights
+  normalizeWeights: boolean
+  layers: number
+  shots: number
+}
+
+/**
+ * Job summary served by GET /api/optimization/:id — the status page's primary
+ * source of truth. Field names mirror the backend contract verbatim, so the
+ * page renders the gateway's data without re-deriving anything.
+ */
+export interface QuantumJobSummary {
+  id: string
+  jobId: string
+  status: QuantumJobStatus
+  problemType: OptimizationProblemType
+  algorithm: string
+  executionMode: QuantumExecutionMode
+  executionModeUsed: ExecutionModeUsed
+  backend: QuantumRunBackend
+  backendUsed: QuantumRunBackend
+  fallbackPolicy: FallbackPolicy
+  fallbackApplied: boolean
+  fallbackReason: string | null
+  qubitCount: number | null
+  validationStatus: 'valid' | 'invalid' | null
+  validationSummary: string | null
+  resultSummary: {
+    objectiveValue: number | null
+    selectedCount: number | null
+    executionTimeMs: number | null
+    gapVsQuantum: number | null
+    /** Reference objective from the persisted classical run (null = none). */
+    classicalObjectiveValue: number | null
+    /** Reference wall time from the persisted classical run (null = none). */
+    classicalRuntimeMs: number | null
+    /**
+     * min(1, quantum/classical) on the optimized objective — the gateway's
+     * approximation quality. Higher is better, never exceeds 1. Null when there
+     * is no classical reference. A fallback run (no real quantum result)
+     * reports 1.0 with `fallbackApplied` set, which the benchmark UI labels.
+     */
+    approximationQuality: number | null
+    /** Whether the run's constraints validated (null = no result). */
+    validated: boolean | null
+    constraintViolationCount: number | null
+  }
+  owner: string
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  forecastReference: string | null
+  candidateReference: string | null
+  inputReference: string | null
+  variablesCount: number | null
+  constraints: ResolvedConstraints | null
+  objectiveConfiguration: ObjectiveConfiguration | null
+  quboStorage: 'inline' | 'artifact' | null
+  quboArtifactReference: string | null
+  errorMessage: string | null
+  deletedAt: string | null
+  deletedBy: string | null
+  deleteReason: string | null
 }
 
 export type QuantumModalKind = 'qubo' | 'qaoa-job' | 'classical' | 'final-result' | 'export'
@@ -246,4 +358,127 @@ export interface PipelineUpdate {
   stageId: PipelineStageId
   status: StageStatus
   error?: string
+}
+
+/* ------------------------------------------------------------------ */
+/* QUBO Visualization                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Availability of a served formulation for the visualization page.
+ * `valid` = the stored matrix is well formed (N rows × 2N columns);
+ * `unavailable` = the job never produced a QUBO (queued / failed early);
+ * `invalid` = the stored matrix is malformed. Always sourced from the backend.
+ */
+export type QuboAvailability = 'valid' | 'unavailable' | 'invalid'
+
+export interface QuboConstraintRow {
+  key: string
+  name: string
+  configuredLimit: number
+  /** QUBO penalty weight, or null when the constraint is not an explicit QUBO term. */
+  penalty: number | null
+  penaltyKind: 'qubo' | 'post_decode' | null
+  status: 'satisfied' | 'violated' | 'unknown'
+  detail: string
+}
+
+export interface QuboPenaltyTerm {
+  key: string
+  name: string
+  formula: string
+  scale: number | null
+  detail: string
+}
+
+export interface QuboVariableDetail {
+  index: number
+  id: string
+  candidateId: string
+  name: string | null
+  zone: string | null
+  selected: boolean
+  semantic: string
+}
+
+/**
+ * Full formulation served by GET /api/optimization/jobs/:id/qubo. The backend
+ * is the single source of truth: every number rendered on the visualization
+ * page (matrix, linear/quadratic, penalty scale, bitstring) is carried in this
+ * payload — nothing is re-derived from the matrix in React.
+ */
+export interface QuboFormulation {
+  jobId: string
+  problemType: OptimizationProblemType
+  algorithm: string
+  status: string
+  createdAt: string
+  available: QuboAvailability
+  storage: 'inline' | 'artifact' | null
+  inline: boolean
+  variableCount: number | null
+  variables: string[]
+  /** Human-readable QUBO expression. */
+  expression: string
+  /** Stored doc matrix: N rows × 2N columns (quadratic row ‖ linear vector). */
+  matrix: number[][]
+  artifactReference: string | null
+  offset: number
+  /** Served linear vector (authoritative, length N) or null when no build. */
+  linear: number[] | null
+  /** Served symmetric quadratic matrix (N×N) or null when no build. */
+  quadratic: number[][] | null
+  penaltyScale: number | null
+  summary: {
+    variables: number | null
+    linearTerms: number | null
+    quadraticTerms: number | null
+    constraints: number | null
+    penaltyStrength: number | null
+  }
+  constraints: QuboConstraintRow[]
+  penalties: QuboPenaltyTerm[]
+  objective: {
+    target: 'minimize'
+    expression: string
+    explanation: string
+  }
+  variablesDetail: QuboVariableDetail[]
+  bitstring: string | null
+  selectedVariableIds: string[]
+  hasResult: boolean
+  validationStatus: string | null
+  validationSummary: string | null
+}
+
+/* ------------------------------------------------------------------ */
+/* Optimization Result page                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Federated inputs served by `GET /api/optimization/inputs` — the GIS
+ * candidate sites (with coordinates) plus the planning constraints. Used to
+ * place the selected subset on the map and to fill the location table; the
+ * decision document itself never carries geometry.
+ */
+export interface OptimizationInputsPayload {
+  candidates: CandidateLocation[]
+  constraints: ResourceConstraints
+  providedBy: ProviderProvenance
+}
+
+/**
+ * Backend-generated, auditable result document served by
+ * `GET /api/optimization/jobs/:id/export`. The page downloads this verbatim —
+ * the export is never reconstructed in React. `quantumAdvantageClaimed` is
+ * always `false` and the disclaimer travels with the file.
+ */
+export interface OptimizationExportDocument {
+  jobId: string
+  exportedAt: string
+  status: QuantumJobStatus
+  summary: QuantumJobSummary
+  result: OptimizationResult | null
+  quantumAdvantageClaimed: false
+  benchmarkDisclaimer: string
 }

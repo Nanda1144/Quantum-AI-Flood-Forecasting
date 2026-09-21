@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import type {
   Forecast,
   ModelComparisonRow,
@@ -8,14 +15,25 @@ import type {
   Paginated,
   PredictionQuery,
 } from '../../types/domain.ts'
-import type { OptimizationJob } from '../../types/optimization.ts'
+import type {
+  OptimizationJob,
+  OptimizationJobAuditEntry,
+  OptimizationResultRecord,
+  QuboBuild,
+  QuboMetadata,
+  QuantumJobRecord,
+  QuantumResultRecord,
+} from '../../types/optimization.ts'
+import { AppError, ErrorCodes } from '../../envelope.ts'
 import { getPool } from './pool.ts'
+import { deriveQuboMetadata } from '../../lib/optimization/qubo-metadata.ts'
 import type {
   ForecastRepository,
   ModelComparisonRepository,
   ModelRepository,
   OptimizationJobRepository,
   OptimizationRepository,
+  QuantumJobRepository,
 } from '../repositories.ts'
 
 interface ForecastRow {
@@ -422,11 +440,13 @@ export class PostgresModelComparisonRepository implements ModelComparisonReposit
     )
     const total = Number(totalResult.rows[0].count)
 
+    const limitIndex = params.length + 1
+    const offsetIndex = params.length + 2
     const result = await getPool().query<ComparisonRow>(
       `${VERSION_WITH_LATEST_METRICS_SQL}
        ${where}
        ORDER BY v.model_name ASC, v.version ASC
-       LIMIT $${next()} OFFSET $${next()}`,
+       LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
       [...params, query.limit, (query.page - 1) * query.limit],
     )
 
@@ -512,14 +532,21 @@ function rowToMetricsHistory(row: MetricsHistoryRow): ModelMetricsHistoryItem {
  */
 export class PostgresOptimizationJobRepository implements OptimizationJobRepository {
   async save(job: OptimizationJob): Promise<OptimizationJob> {
+    const artifact = job.quboStorage === 'artifact'
+    const quboReference = artifact ? (job.quboArtifactReference ?? `qflare://qubo/${job.id}`) : null
+    // Large QUBOs travel by reference: the row keeps a pointer, the full plain
+    // JSON matrix lives in the artifact store (never Qiskit objects inline).
     await getPool().query(
       `INSERT INTO optimization_jobs (
          id, owner, status, problem_type, request, fallback_policy, algorithm,
          execution_mode, execution_mode_used, backend, backend_used,
          fallback_applied, fallback_reason, qubit_count, steps, qubo, classical,
          result, validation_status, validation_summary, error,
+         forecast_reference, candidate_reference, input_reference, variables_count,
+         constraints, objective_configuration, error_message, qubo_storage,
+         qubo_artifact_reference, deleted_at, deleted_by, delete_reason,
          created_at, started_at, completed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status, problem_type = EXCLUDED.problem_type,
          request = EXCLUDED.request, fallback_policy = EXCLUDED.fallback_policy,
@@ -532,6 +559,17 @@ export class PostgresOptimizationJobRepository implements OptimizationJobReposit
          qubo = EXCLUDED.qubo, classical = EXCLUDED.classical,
          result = EXCLUDED.result, validation_status = EXCLUDED.validation_status,
          validation_summary = EXCLUDED.validation_summary, error = EXCLUDED.error,
+         forecast_reference = EXCLUDED.forecast_reference,
+         candidate_reference = EXCLUDED.candidate_reference,
+         input_reference = EXCLUDED.input_reference,
+         variables_count = EXCLUDED.variables_count,
+         constraints = EXCLUDED.constraints,
+         objective_configuration = EXCLUDED.objective_configuration,
+         error_message = EXCLUDED.error_message,
+         qubo_storage = EXCLUDED.qubo_storage,
+         qubo_artifact_reference = EXCLUDED.qubo_artifact_reference,
+         deleted_at = EXCLUDED.deleted_at, deleted_by = EXCLUDED.deleted_by,
+         delete_reason = EXCLUDED.delete_reason,
          started_at = EXCLUDED.started_at, completed_at = EXCLUDED.completed_at`,
       [
         job.id,
@@ -549,17 +587,47 @@ export class PostgresOptimizationJobRepository implements OptimizationJobReposit
         job.fallbackReason,
         job.qubitCount,
         JSON.stringify(job.steps),
-        job.qubo !== null ? JSON.stringify(job.qubo) : null,
+        artifact ? null : (job.qubo !== null ? JSON.stringify(job.qubo) : null),
         job.classical !== null ? JSON.stringify(job.classical) : null,
         job.result !== null ? JSON.stringify(job.result) : null,
         job.validationStatus,
         job.validationSummary,
         job.error !== null ? JSON.stringify(job.error) : null,
+        job.forecastReference,
+        job.candidateReference,
+        job.inputReference,
+        job.variablesCount,
+        job.constraints !== null ? JSON.stringify(job.constraints) : null,
+        job.objectiveConfiguration !== null ? JSON.stringify(job.objectiveConfiguration) : null,
+        job.errorMessage,
+        job.quboStorage,
+        quboReference,
+        job.deletedAt,
+        job.deletedBy,
+        job.deleteReason,
         job.createdAt,
         job.startedAt,
         job.completedAt,
       ],
     )
+    if (artifact && job.qubo !== null) {
+      await getPool().query(
+        `INSERT INTO optimization_qubo_artifacts (optimization_job_id, variable_count, storage_reference, qubo)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (optimization_job_id) DO UPDATE SET
+           variable_count = EXCLUDED.variable_count,
+           storage_reference = EXCLUDED.storage_reference,
+           qubo = EXCLUDED.qubo,
+           stored_at = now()`,
+        [job.id, job.qubo.doc.variableCount, quboReference, JSON.stringify(job.qubo)],
+      )
+    }
+    // QUBO metadata audit record (migration 005): inline rows carry the full
+    // plain-JSON representation; artifact rows carry reference + checksum +
+    // dimensions only — never the matrix cells.
+    if (job.qubo !== null) {
+      await this.saveQuboMetadata(deriveQuboMetadata(job))
+    }
     return job
   }
 
@@ -568,8 +636,216 @@ export class PostgresOptimizationJobRepository implements OptimizationJobReposit
     return result.rows[0] ? rowToOptimizationJob(result.rows[0]) : null
   }
 
+  async list(limit = 200): Promise<OptimizationJob[]> {
+    const result = await getPool().query<OptimizationJobRow>(
+      `SELECT * FROM optimization_jobs
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [limit],
+    )
+    return result.rows.map((row) => rowToOptimizationJob(row))
+  }
+
+  async findQuboBuild(jobId: string): Promise<QuboBuild | null> {
+    const result = await getPool().query<{ qubo: QuboBuild }>(
+      'SELECT qubo FROM optimization_qubo_artifacts WHERE optimization_job_id = $1',
+      [jobId],
+    )
+    return result.rows[0]?.qubo ?? null
+  }
+
+  async saveResult(resultRecord: OptimizationResultRecord): Promise<OptimizationResultRecord> {
+    // The approximation_ratio/basis/reason + classical reference snapshot is
+    // WRITE-ONCE (migration 007): a re-run of this upsert never overwrites a
+    // previously stored snapshot — COALESCE keeps the historical row intact.
+    await getPool().query(
+      `INSERT INTO optimization_results (
+         id, optimization_job_id, bitstring, selected_locations, objective_value,
+         constraint_violations, validation_status, runtime_ms,
+         classical_objective, quantum_objective, approximation_quality,
+         classical_solver, classical_runtime_ms,
+         approximation_ratio, approximation_basis, approximation_invalid_reason,
+         random_seed, validation_timestamp, validation_details, explanation_metadata,
+         created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+       ON CONFLICT (id) DO UPDATE SET
+         bitstring = EXCLUDED.bitstring,
+         selected_locations = EXCLUDED.selected_locations,
+         objective_value = EXCLUDED.objective_value,
+         constraint_violations = EXCLUDED.constraint_violations,
+         validation_status = EXCLUDED.validation_status,
+         runtime_ms = EXCLUDED.runtime_ms,
+         classical_objective = EXCLUDED.classical_objective,
+         quantum_objective = EXCLUDED.quantum_objective,
+         approximation_quality = EXCLUDED.approximation_quality,
+         classical_solver = COALESCE(optimization_results.classical_solver, EXCLUDED.classical_solver),
+         classical_runtime_ms = COALESCE(optimization_results.classical_runtime_ms, EXCLUDED.classical_runtime_ms),
+         approximation_ratio = COALESCE(optimization_results.approximation_ratio, EXCLUDED.approximation_ratio),
+         approximation_basis = COALESCE(optimization_results.approximation_basis, EXCLUDED.approximation_basis),
+         approximation_invalid_reason = COALESCE(optimization_results.approximation_invalid_reason, EXCLUDED.approximation_invalid_reason),
+         random_seed = COALESCE(optimization_results.random_seed, EXCLUDED.random_seed),
+         validation_timestamp = COALESCE(optimization_results.validation_timestamp, EXCLUDED.validation_timestamp),
+         validation_details = COALESCE(optimization_results.validation_details, EXCLUDED.validation_details),
+         explanation_metadata = COALESCE(optimization_results.explanation_metadata, EXCLUDED.explanation_metadata),
+         created_at = EXCLUDED.created_at`,
+      [
+        resultRecord.id,
+        resultRecord.optimizationJobId,
+        resultRecord.bitstring,
+        JSON.stringify(resultRecord.selectedLocationIds),
+        resultRecord.objectiveValue,
+        JSON.stringify(resultRecord.constraintViolations),
+        resultRecord.validationStatus,
+        resultRecord.runtimeMs,
+        resultRecord.classicalObjective,
+        resultRecord.quantumObjective,
+        resultRecord.approximationQuality,
+        resultRecord.classicalSolver,
+        resultRecord.classicalRuntimeMs,
+        resultRecord.approximationRatio,
+        resultRecord.approximationBasis,
+        resultRecord.approximationInvalidReason,
+        resultRecord.randomSeed,
+        resultRecord.validationTimestamp,
+        resultRecord.validationDetails ? JSON.stringify(resultRecord.validationDetails) : null,
+        resultRecord.explanationMetadata ? JSON.stringify(resultRecord.explanationMetadata) : null,
+        resultRecord.createdAt,
+      ],
+    )
+    return resultRecord
+  }
+
+  async findResult(jobId: string): Promise<OptimizationResultRecord | null> {
+    const result = await getPool().query<OptimizationResultRow>(
+      'SELECT * FROM optimization_results WHERE optimization_job_id = $1',
+      [jobId],
+    )
+    return result.rows[0] ? rowToOptimizationResult(result.rows[0]) : null
+  }
+
+  async saveQuboMetadata(metadata: QuboMetadata): Promise<QuboMetadata> {
+    const inline = metadata.storageMode === 'inline'
+    await getPool().query(
+      `INSERT INTO optimization_qubo_metadata (
+         qubo_id, optimization_job_id, storage_mode, variable_count,
+         matrix, linear_terms, quadratic_terms, penalty_configuration, objective_expression,
+         artifact_reference, checksum, matrix_dimensions, storage_location, metadata, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (qubo_id) DO UPDATE SET
+         storage_mode = EXCLUDED.storage_mode,
+         variable_count = EXCLUDED.variable_count,
+         matrix = EXCLUDED.matrix,
+         linear_terms = EXCLUDED.linear_terms,
+         quadratic_terms = EXCLUDED.quadratic_terms,
+         penalty_configuration = EXCLUDED.penalty_configuration,
+         objective_expression = EXCLUDED.objective_expression,
+         artifact_reference = EXCLUDED.artifact_reference,
+         checksum = EXCLUDED.checksum,
+         matrix_dimensions = EXCLUDED.matrix_dimensions,
+         storage_location = EXCLUDED.storage_location,
+         metadata = EXCLUDED.metadata,
+         created_at = EXCLUDED.created_at`,
+      [
+        metadata.quboId,
+        metadata.optimizationJobId,
+        metadata.storageMode,
+        metadata.variableCount,
+        inline ? JSON.stringify(metadata.matrix) : null,
+        inline ? JSON.stringify(metadata.linearTerms) : null,
+        inline ? JSON.stringify(metadata.quadraticTerms) : null,
+        inline ? JSON.stringify(metadata.penaltyConfiguration) : null,
+        inline ? metadata.objectiveExpression ?? null : null,
+        inline ? null : metadata.artifactReference,
+        inline ? null : metadata.checksum,
+        inline ? null : JSON.stringify(metadata.matrixDimensions),
+        inline ? null : metadata.storageLocation,
+        inline ? null : JSON.stringify(metadata.metadata),
+        metadata.createdAt ?? new Date().toISOString(),
+      ],
+    )
+    return metadata
+  }
+
+  async findQuboMetadata(jobId: string): Promise<QuboMetadata | null> {
+    const result = await getPool().query<QuboMetadataRow>(
+      'SELECT * FROM optimization_qubo_metadata WHERE optimization_job_id = $1',
+      [jobId],
+    )
+    return result.rows[0] ? rowToQuboMetadata(result.rows[0]) : null
+  }
+
+  async deleteJob(jobId: string, actor: string, reason: string): Promise<OptimizationJob> {
+    await getPool().query(
+      `WITH updated AS (
+         UPDATE optimization_jobs
+            SET deleted_at = now(), deleted_by = $2, delete_reason = $3
+          WHERE id = $1
+          RETURNING id
+       )
+       INSERT INTO optimization_job_audit (optimization_job_id, action, actor, reason)
+       SELECT id, 'soft_deleted', $2, $3 FROM updated`,
+      [jobId, actor, reason],
+    )
+    const job = await this.findById(jobId)
+    if (!job) throw new AppError(404, ErrorCodes.JOB_NOT_FOUND, `Optimization job '${jobId}' not found`)
+    return job
+  }
+
+  async appendAudit(entry: {
+    optimizationJobId: string
+    action: string
+    actor: string
+    reason: string | null
+  }): Promise<OptimizationJobAuditEntry> {
+    const result = await getPool().query<OptimizationAuditRow>(
+      `INSERT INTO optimization_job_audit (optimization_job_id, action, actor, reason)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, optimization_job_id, action, actor, reason, created_at`,
+      [entry.optimizationJobId, entry.action, entry.actor, entry.reason],
+    )
+    const row = result.rows[0]
+    return {
+      id: Number(row.id),
+      optimizationJobId: row.optimization_job_id,
+      action: row.action,
+      actor: row.actor,
+      reason: row.reason,
+      createdAt: row.created_at.toISOString(),
+    }
+  }
+
+  async listAudit(jobId: string): Promise<OptimizationJobAuditEntry[]> {
+    const result = await getPool().query<OptimizationAuditRow>(
+      `SELECT id, optimization_job_id, action, actor, reason, created_at
+         FROM optimization_job_audit WHERE optimization_job_id = $1 ORDER BY id`,
+      [jobId],
+    )
+    return result.rows.map((row) => ({
+      id: Number(row.id),
+      optimizationJobId: row.optimization_job_id,
+      action: row.action,
+      actor: row.actor,
+      reason: row.reason,
+      createdAt: row.created_at.toISOString(),
+    }))
+  }
+
   async deleteAll(): Promise<void> {
-    await getPool().query('DELETE FROM optimization_jobs')
+    const client = await getPool().connect()
+    try {
+      await client.query('BEGIN')
+      // Administrative cleanup: enable the migration 004 escape hatch so the
+      // write-once guard is lifted for the test-purge statement only.
+      await client.query(`SET LOCAL "app.allow_optimization_delete" = 'true'`)
+      await client.query('DELETE FROM optimization_jobs')
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally {
+      client.release()
+    }
   }
 }
 
@@ -595,9 +871,72 @@ interface OptimizationJobRow {
   validation_status: OptimizationJob['validationStatus']
   validation_summary: string | null
   error: OptimizationJob['error']
+  forecast_reference: string | null
+  candidate_reference: string | null
+  input_reference: string | null
+  variables_count: number | null
+  constraints: OptimizationJob['constraints']
+  objective_configuration: OptimizationJob['objectiveConfiguration']
+  error_message: string | null
+  qubo_storage: OptimizationJob['quboStorage']
+  qubo_artifact_reference: string | null
+  deleted_at: string | null
+  deleted_by: string | null
+  delete_reason: string | null
   created_at: string
   started_at: string | null
   completed_at: string | null
+}
+
+interface OptimizationResultRow {
+  id: string
+  optimization_job_id: string
+  bitstring: string | null
+  selected_locations: string[]
+  objective_value: number
+  constraint_violations: unknown[]
+  validation_status: OptimizationResultRecord['validationStatus']
+  runtime_ms: number
+  classical_objective: number | null
+  quantum_objective: number | null
+  approximation_quality: number | null
+  classical_solver: OptimizationResultRecord['classicalSolver'] | string | null
+  classical_runtime_ms: number | null
+  approximation_ratio: number | null
+  approximation_basis: OptimizationResultRecord['approximationBasis'] | string | null
+  approximation_invalid_reason: OptimizationResultRecord['approximationInvalidReason'] | string | null
+  random_seed: string | number | null
+  validation_timestamp: string | Date | null
+  validation_details: OptimizationResultRecord['validationDetails']
+  explanation_metadata: OptimizationResultRecord['explanationMetadata']
+  created_at: string
+}
+
+interface OptimizationAuditRow {
+  id: number
+  optimization_job_id: string
+  action: string
+  actor: string
+  reason: string | null
+  created_at: Date
+}
+
+interface QuboMetadataRow {
+  qubo_id: string
+  optimization_job_id: string
+  storage_mode: QuboMetadata['storageMode']
+  variable_count: number
+  matrix: QuboMetadata['matrix'] | null
+  linear_terms: QuboMetadata['linearTerms'] | null
+  quadratic_terms: QuboMetadata['quadraticTerms'] | null
+  penalty_configuration: QuboMetadata['penaltyConfiguration'] | null
+  objective_expression: string | null
+  artifact_reference: string | null
+  checksum: string | null
+  matrix_dimensions: QuboMetadata['matrixDimensions'] | null
+  storage_location: string | null
+  metadata: QuboMetadata['metadata'] | null
+  created_at: string
 }
 
 function rowToOptimizationJob(row: OptimizationJobRow): OptimizationJob {
@@ -626,5 +965,227 @@ function rowToOptimizationJob(row: OptimizationJobRow): OptimizationJob {
     createdAt: row.created_at,
     startedAt: row.started_at,
     completedAt: row.completed_at,
+    forecastReference: row.forecast_reference,
+    candidateReference: row.candidate_reference,
+    inputReference: row.input_reference,
+    variablesCount: row.variables_count,
+    constraints: row.constraints,
+    objectiveConfiguration: row.objective_configuration,
+    errorMessage: row.error_message,
+    quboStorage: row.qubo_storage,
+    quboArtifactReference: row.qubo_artifact_reference,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
+    deleteReason: row.delete_reason,
+  }
+}
+
+function rowToOptimizationResult(row: OptimizationResultRow): OptimizationResultRecord {
+  return {
+    id: row.id,
+    optimizationJobId: row.optimization_job_id,
+    bitstring: row.bitstring,
+    selectedLocationIds: row.selected_locations,
+    objectiveValue: row.objective_value,
+    constraintViolations: row.constraint_violations as OptimizationResultRecord['constraintViolations'],
+    validationStatus: row.validation_status,
+    runtimeMs: row.runtime_ms,
+    classicalObjective: row.classical_objective,
+    quantumObjective: row.quantum_objective,
+    approximationQuality: row.approximation_quality,
+    classicalSolver: (row.classical_solver as OptimizationResultRecord['classicalSolver']) ?? null,
+    classicalRuntimeMs: row.classical_runtime_ms,
+    approximationRatio: row.approximation_ratio,
+    approximationBasis: (row.approximation_basis as OptimizationResultRecord['approximationBasis']) ?? null,
+    approximationInvalidReason: (row.approximation_invalid_reason as OptimizationResultRecord['approximationInvalidReason']) ?? null,
+    randomSeed: row.random_seed === null ? null : Number(row.random_seed),
+    validationTimestamp: row.validation_timestamp ? new Date(row.validation_timestamp).toISOString() : null,
+    validationDetails: row.validation_details ?? null,
+    explanationMetadata: row.explanation_metadata ?? null,
+    createdAt: row.created_at,
+  }
+}
+
+function rowToQuboMetadata(row: QuboMetadataRow): QuboMetadata {
+  return {
+    quboId: row.qubo_id,
+    optimizationJobId: row.optimization_job_id,
+    storageMode: row.storage_mode,
+    variableCount: row.variable_count,
+    ...(row.matrix !== null && { matrix: row.matrix }),
+    ...(row.linear_terms !== null && { linearTerms: row.linear_terms }),
+    ...(row.quadratic_terms !== null && { quadraticTerms: row.quadratic_terms }),
+    ...(row.penalty_configuration !== null && { penaltyConfiguration: row.penalty_configuration }),
+    ...(row.objective_expression !== null && { objectiveExpression: row.objective_expression }),
+    ...(row.artifact_reference !== null && { artifactReference: row.artifact_reference }),
+    ...(row.checksum !== null && { checksum: row.checksum }),
+    ...(row.matrix_dimensions !== null && { matrixDimensions: row.matrix_dimensions }),
+    ...(row.storage_location !== null && { storageLocation: row.storage_location }),
+    ...(row.metadata !== null && { metadata: row.metadata }),
+    createdAt: row.created_at,
+  }
+}
+
+/**
+ * Persisted quantum submissions (`quantum_jobs` / `quantum_results`, migration
+ * 006). Lifecycle is upsert-driven: `saveJob` records a queued/running row at
+ * submission time and updates it to a terminal state with the same id — every
+ * attempt on a fallback ladder gets its own honest row, preserving the
+ * simulator/hardware distinction. Only configuration scalars and plain-JSON
+ * counts are stored; raw circuits are never persisted.
+ */
+export class PostgresQuantumJobRepository implements QuantumJobRepository {
+  async saveJob(job: QuantumJobRecord): Promise<QuantumJobRecord> {
+    await getPool().query(
+      `INSERT INTO quantum_jobs (
+         id, optimization_job_id, algorithm, backend, execution_mode, qubits,
+         shots, layers, status, submitted_at, started_at, completed_at,
+         error_code, error_message, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (id) DO UPDATE SET
+         status = EXCLUDED.status,
+         qubits = EXCLUDED.qubits,
+         started_at = EXCLUDED.started_at,
+         completed_at = EXCLUDED.completed_at,
+         error_code = EXCLUDED.error_code,
+         error_message = EXCLUDED.error_message`,
+      [
+        job.id,
+        job.optimizationJobId,
+        job.algorithm,
+        job.backend,
+        job.executionMode,
+        job.qubits,
+        job.shots,
+        job.layers,
+        job.status,
+        job.submittedAt,
+        job.startedAt,
+        job.completedAt,
+        job.errorCode,
+        job.errorMessage,
+        job.createdAt,
+      ],
+    )
+    return job
+  }
+
+  async findJobById(id: string): Promise<QuantumJobRecord | null> {
+    const result = await getPool().query<QuantumJobRow>('SELECT * FROM quantum_jobs WHERE id = $1', [id])
+    return result.rows[0] ? rowToQuantumJob(result.rows[0]) : null
+  }
+
+  async findJobsByOptimizationJobId(optimizationJobId: string): Promise<QuantumJobRecord[]> {
+    const result = await getPool().query<QuantumJobRow>(
+      `SELECT * FROM quantum_jobs WHERE optimization_job_id = $1 ORDER BY created_at ASC, id ASC`,
+      [optimizationJobId],
+    )
+    return result.rows.map(rowToQuantumJob)
+  }
+
+  async saveResult(result: QuantumResultRecord): Promise<QuantumResultRecord> {
+    await getPool().query(
+      `INSERT INTO quantum_results (
+         id, quantum_job_id, bitstring, counts, objective_value, runtime_ms,
+         raw_metadata_reference, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO UPDATE SET
+         bitstring = EXCLUDED.bitstring,
+         counts = EXCLUDED.counts,
+         objective_value = EXCLUDED.objective_value,
+         runtime_ms = EXCLUDED.runtime_ms,
+         raw_metadata_reference = EXCLUDED.raw_metadata_reference,
+         created_at = EXCLUDED.created_at`,
+      [
+        result.id,
+        result.quantumJobId,
+        result.bitstring,
+        JSON.stringify(result.counts),
+        result.objectiveValue,
+        result.runtimeMs,
+        result.rawMetadataReference,
+        result.createdAt,
+      ],
+    )
+    return result
+  }
+
+  async findResult(quantumJobId: string): Promise<QuantumResultRecord | null> {
+    const result = await getPool().query<QuantumResultRow>(
+      'SELECT * FROM quantum_results WHERE quantum_job_id = $1',
+      [quantumJobId],
+    )
+    return result.rows[0] ? rowToQuantumResult(result.rows[0]) : null
+  }
+
+  async deleteAll(): Promise<void> {
+    await getPool().query('DELETE FROM quantum_results')
+    await getPool().query('DELETE FROM quantum_jobs')
+  }
+}
+
+interface QuantumJobRow {
+  id: string
+  optimization_job_id: string
+  algorithm: string
+  backend: QuantumJobRecord['backend']
+  execution_mode: QuantumJobRecord['executionMode']
+  qubits: number | null
+  shots: number
+  layers: number
+  status: QuantumJobRecord['status']
+  submitted_at: Date | string
+  started_at: Date | string | null
+  completed_at: Date | string | null
+  error_code: string | null
+  error_message: string | null
+  created_at: Date | string
+}
+
+interface QuantumResultRow {
+  id: string
+  quantum_job_id: string
+  bitstring: string | null
+  counts: Record<string, number>
+  objective_value: number | null
+  runtime_ms: number
+  raw_metadata_reference: string | null
+  created_at: Date | string
+}
+
+function toIso(value: Date | string | null): string | null {
+  return value === null ? null : value instanceof Date ? value.toISOString() : String(value)
+}
+
+function rowToQuantumJob(row: QuantumJobRow): QuantumJobRecord {
+  return {
+    id: row.id,
+    optimizationJobId: row.optimization_job_id,
+    algorithm: row.algorithm,
+    backend: row.backend,
+    executionMode: row.execution_mode,
+    qubits: row.qubits,
+    shots: row.shots,
+    layers: row.layers,
+    status: row.status,
+    submittedAt: toIso(row.submitted_at)!,
+    startedAt: toIso(row.started_at),
+    completedAt: toIso(row.completed_at),
+    errorCode: row.error_code,
+    errorMessage: row.error_message,
+    createdAt: toIso(row.created_at)!,
+  }
+}
+
+function rowToQuantumResult(row: QuantumResultRow): QuantumResultRecord {
+  return {
+    id: row.id,
+    quantumJobId: row.quantum_job_id,
+    bitstring: row.bitstring,
+    counts: row.counts ?? {},
+    objectiveValue: row.objective_value,
+    runtimeMs: row.runtime_ms,
+    rawMetadataReference: row.raw_metadata_reference,
+    createdAt: toIso(row.created_at)!,
   }
 }

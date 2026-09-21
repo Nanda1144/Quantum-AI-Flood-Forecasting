@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Production optimization adapter.
  *
  * Talks to the platform's optimization gateway over HTTP:
@@ -29,6 +36,7 @@ import type {
   QuantumBackend,
 } from '../../types/optimization'
 import type { OptimizationAdapter, OptimizationInputs, ProblemInputsRequest } from './adapter'
+import { authHeaders, notifyUnauthorized } from '../authService'
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
 const REQUEST_TIMEOUT_MS = 12000
@@ -55,7 +63,7 @@ function toError(error: unknown): ApiError {
 async function fetchOpt<T>(path: string, init?: Omit<RequestInit, 'body'> & { body?: unknown }, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
-  const headers: Record<string, string> = { Accept: 'application/json' }
+  const headers: Record<string, string> = { Accept: 'application/json', ...authHeaders() }
   let body: BodyInit | undefined
   if (init?.body !== undefined) {
     headers['Content-Type'] = 'application/json'
@@ -69,6 +77,10 @@ async function fetchOpt<T>(path: string, init?: Omit<RequestInit, 'body'> & { bo
       body,
       signal: controller.signal,
     })
+    if (response.status === 401) {
+      notifyUnauthorized()
+      throw { code: 'UNAUTHORIZED', message: 'Session expired or not authenticated — please sign in' } satisfies ApiError
+    }
     if (!response.ok) {
       let message = `Request to ${path} failed with status ${response.status}`
       let code = 'HTTP_ERROR'

@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Shared API envelope + error contract for the Q-FLARE backend.
  *
  * Success:  { success: true, data: {...}, timestamp: "..." }
@@ -35,6 +42,9 @@ export const ErrorCodes = {
   RATE_LIMITED: 'RATE_LIMITED',
   OPTIMIZATION_CONFLICT: 'OPTIMIZATION_CONFLICT',
   JOB_NOT_FOUND: 'JOB_NOT_FOUND',
+  JOB_NOT_COMPLETE: 'JOB_NOT_COMPLETE',
+  RESULT_NOT_FOUND: 'RESULT_NOT_FOUND',
+  DELETE_PROTECTED: 'DELETE_PROTECTED',
   NO_CANDIDATES: 'NO_CANDIDATES',
   INVALID_OBJECTIVE_WEIGHTS: 'INVALID_OBJECTIVE_WEIGHTS',
   INFEASIBLE_BUDGET: 'INFEASIBLE_BUDGET',

@@ -1,3 +1,10 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
 import { ChartArea, Layers } from 'lucide-react'
 import type { RiskAnalytics } from '../../types/ai'
 import { RiskTrendChart } from '../charts/RiskTrendChart'
@@ -10,6 +17,10 @@ interface RiskAnalyticsSectionProps {
 }
 
 export function RiskAnalyticsSection({ analytics }: RiskAnalyticsSectionProps) {
+  const isEmpty =
+    analytics.riskTrend.length === 0 &&
+    analytics.probabilityTrend.length === 0 &&
+    analytics.distribution.length === 0
   const bars = [
     { level: 'CRITICAL' as const, count: analytics.summary.critical },
     { level: 'HIGH' as const, count: analytics.summary.high },
@@ -26,7 +37,14 @@ export function RiskAnalyticsSection({ analytics }: RiskAnalyticsSectionProps) {
         description="Flood probability and risk evolution"
       />
 
-      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {isEmpty ? (
+        <div className="mt-4 rounded-lg border border-forest-600/70 bg-forest-800/60 px-4 py-10 text-center">
+          <p className="text-sm font-semibold text-mist-200">No risk analytics data</p>
+          <p className="mt-1 text-xs text-mist-500">The AI service returned no risk trend or distribution data.</p>
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-mist-500">Risk Trend</p>
           <RiskTrendChart data={analytics.riskTrend} ariaLabel="Risk score trend line chart" />
@@ -82,6 +100,8 @@ export function RiskAnalyticsSection({ analytics }: RiskAnalyticsSectionProps) {
           })}
         </div>
       </div>
+        </>
+      )}
     </div>
   )
 }

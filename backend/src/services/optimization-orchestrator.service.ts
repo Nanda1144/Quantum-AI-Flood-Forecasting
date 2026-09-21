@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Optimization orchestration backend — the 15-step pipeline.
  *
  * Owns the end-to-end lifecycle of an optimization job:
@@ -23,6 +30,8 @@
 import { AppError, ErrorCodes, type ErrorCode } from '../envelope.ts'
 import { QuantumServiceError, type QuantumExecutionResult, type QuantumServiceClient } from '../clients/quantum-service.client.ts'
 import { solveClassicalReference, type ClassicalRun } from '../lib/optimization/classical.ts'
+import { benchmarkListEntry, buildBenchmarkDocument, computeApproximationRatio, type QuantumExecutionInput } from '../lib/optimization/benchmark.ts'
+import { auditOptimizationResult } from '../lib/optimization/result-validation.ts'
 import {
   buildQubo,
   computeObjective,
@@ -34,22 +43,35 @@ import {
 } from '../lib/optimization/qubo.ts'
 import { seedFrom } from './deterministic.ts'
 import type { CandidateStore, ConstraintsSource } from './gis/candidate-store.ts'
-import type { ForecastRepository, OptimizationJobRepository } from '../repositories/repositories.ts'
+import type { ForecastRepository, OptimizationJobRepository, QuantumJobRepository } from '../repositories/repositories.ts'
 import type {
+  BenchmarkDocument,
+  BenchmarkListEntry,
+  BenchmarkListFilters,
+  BenchmarkReproducibility,
   CandidateLocation,
   CoverageRequirement,
   FallbackPolicy,
   FrontendStageId,
   MeasurementCount,
   ObjectiveBreakdown,
+  OptimizationExportDocument,
   OptimizationJob,
+  OptimizationJobAuditEntry,
+  OptimizationJobDetail,
   OptimizationJobStatus,
   OptimizationJobSummary,
+  OptimizationResult,
+  OptimizationResultDocument,
+  OptimizationResultRecord,
   PipelineStepId,
   QuantumBackend,
   QuantumExecutionMode,
+  QuantumJobRecord,
+  QuantumResultRecord,
   QuboBuild,
   QuboDocument,
+  ResultExperimentMetadata,
   RunOptimizationRequest,
   StepStatus,
   ValidationStatus,
@@ -59,6 +81,15 @@ export interface OptimizationJobServiceOptions {
   fallbackPolicy: FallbackPolicy
   exhaustiveLimit: number
   executionTimeoutMs: number
+  /** QUBOs with at most this many variables are persisted inline; larger ones go to the artifact store by reference. */
+  quboInlineLimit: number
+  /**
+   * Optional persistence layer for the real quantum submissions (migration
+   * 006). When present, every submitted quantum job — including failed attempts
+   * on a fallback ladder — is recorded in `quantum_jobs`, and completed jobs get
+   * a `quantum_results` row. Absent (tests / demo), nothing is persisted.
+   */
+  quantumJobRepo?: QuantumJobRepository
 }
 
 /** Internal pipeline failure carrying a stable error code the job records. */
@@ -76,9 +107,20 @@ export class PipelineError extends Error {
 interface PipelineContext {
   candidates: CandidateLocation[]
   coverageRequirements: CoverageRequirement[]
+  /** Weighted objective utility per candidate id, derived in build_objective. */
+  objectiveTerms?: Record<string, number>
   remoteQuboId: string | null
   remoteQuboDoc: QuboDocument | null
   qubo?: QuboBuild
+  /** The most recent quantum submission attempted (persistence layer). */
+  submission: {
+    jobId: string | null
+    executionId: string
+    mode: QuantumExecutionMode
+    backend: QuantumBackend
+    shots: number
+    layers: number
+  } | null
 }
 
 const STEPS: { id: PipelineStepId; label: string; stage: FrontendStageId }[] = [
@@ -144,6 +186,27 @@ export class OptimizationJobService {
       createdAt: nowIso,
       startedAt: null,
       completedAt: null,
+      forecastReference: request.forecastReference,
+      candidateReference: request.candidateLocationsReference ?? `gis://candidates/${request.candidateCount}`,
+      inputReference: `ai://forecasts/${request.forecastReference}`,
+      variablesCount: null,
+      constraints: {
+        maxSensors: request.maxSensors,
+        budgetK: request.budgetK,
+        coverageRequirements: request.coverageRequirements,
+      },
+      objectiveConfiguration: {
+        weights: request.weights,
+        normalizeWeights: request.normalizeWeights,
+        layers: request.layers,
+        shots: request.shots,
+      },
+      errorMessage: null,
+      quboStorage: 'inline',
+      quboArtifactReference: null,
+      deletedAt: null,
+      deletedBy: null,
+      deleteReason: null,
     }
     await this.jobRepo.save(job)
 
@@ -207,6 +270,17 @@ export class OptimizationJobService {
     return job
   }
 
+  /**
+   * Ownership-scoped experiment ledger for the benchmark page, newest first.
+   * Admins see every job; other principals see only their own. Summaries only —
+   * the caller fetches the full result document for the run it inspects.
+   */
+  async listSummariesForPrincipal(principal: { username: string; role: string }): Promise<OptimizationJobSummary[]> {
+    const jobs = await this.jobRepo.list()
+    const visible = principal.role === 'admin' ? jobs : jobs.filter((job) => job.owner === principal.username)
+    return visible.map((job) => this.summary(job))
+  }
+
   summary(job: OptimizationJob): OptimizationJobSummary {
     return {
       id: job.id,
@@ -229,18 +303,297 @@ export class OptimizationJobService {
         selectedCount: job.result?.selectedLocations.length ?? null,
         executionTimeMs: job.result?.executionTimeMs ?? null,
         gapVsQuantum: job.result?.classicalComparison.gapVsQuantum ?? null,
+        classicalObjectiveValue: job.result?.classicalComparison.objectiveValue ?? null,
+        classicalRuntimeMs: job.result?.classicalComparison.executionTimeMs ?? null,
+        approximationQuality:
+          job.result && job.result.classicalComparison.objectiveValue > 0 && job.result.objectiveValue !== null
+            ? Number(Math.min(1, job.result.objectiveValue / job.result.classicalComparison.objectiveValue).toFixed(4))
+            : null,
+        validated: job.result ? job.result.validationStatus === 'valid' : null,
         constraintViolationCount: job.result?.constraintViolations.length ?? null,
       },
       owner: job.owner,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       completedAt: job.completedAt,
+      forecastReference: job.forecastReference,
+      candidateReference: job.candidateReference,
+      inputReference: job.inputReference,
+      variablesCount: job.variablesCount,
+      constraints: job.constraints,
+      objectiveConfiguration: job.objectiveConfiguration,
+      quboStorage: job.quboStorage,
+      quboArtifactReference: job.quboArtifactReference,
+      errorMessage: job.errorMessage,
+      deletedAt: job.deletedAt,
+      deletedBy: job.deletedBy,
+      deleteReason: job.deleteReason,
     }
   }
 
   /** Full result document when the job has one, else null (shape = frontend). */
   resultPayload(job: OptimizationJob): OptimizationJob['result'] {
     return job.result
+  }
+
+  /** Ownership-scoped read of the normalized result row (persistence layer). */
+  async getResultForPrincipal(jobId: string, principal: { username: string; role: string }): Promise<OptimizationResultRecord> {
+    await this.getJobForPrincipal(jobId, principal)
+    const record = await this.jobRepo.findResult(jobId)
+    if (!record) {
+      throw new AppError(404, ErrorCodes.RESULT_NOT_FOUND, `No persisted result row for optimization job '${jobId}'`)
+    }
+    return record
+  }
+
+  /**
+   * Ownership-scoped final result document: the stored measurements plus the
+   * backend integrity audit, recommendation gate, quantum comparison and exact
+   * experiment metadata. 404 when the job never produced a result.
+   */
+  async getResultDocumentForPrincipal(
+    jobId: string,
+    principal: { username: string; role: string },
+  ): Promise<OptimizationResultDocument> {
+    const job = await this.getJobForPrincipal(jobId, principal)
+    return this.buildResultDocument(job)
+  }
+
+  /** `GET /api/optimization/:id` — summary + audited result (null before completion). */
+  async getJobDetailForPrincipal(jobId: string, principal: { username: string; role: string }): Promise<OptimizationJobDetail> {
+    const job = await this.getJobForPrincipal(jobId, principal)
+    return {
+      ...this.summary(job),
+      result: job.result ? await this.buildResultDocument(job) : null,
+    }
+  }
+
+  /** Structured, auditable export document for a job (result included when present). */
+  async buildExportDocumentForPrincipal(
+    jobId: string,
+    principal: { username: string; role: string },
+  ): Promise<OptimizationExportDocument> {
+    const job = await this.getJobForPrincipal(jobId, principal)
+    const result = job.result ? await this.buildResultDocument(job) : null
+    return {
+      jobId: job.id,
+      exportedAt: new Date().toISOString(),
+      status: job.status,
+      summary: this.summary(job),
+      result,
+      integrity: result?.integrity ?? null,
+      recommendation: result?.recommendation ?? null,
+      experiment: result?.experiment ?? null,
+      quantumAdvantageClaimed: false,
+      benchmarkDisclaimer:
+        'No quantum speedup is claimed. A classical reference solver ran and is stored with this job (see result.classicalComparison).',
+    }
+  }
+
+  /**
+   * Best-effort write-once audit of a sensitive result action (access/export).
+   * A logging failure must never take a read down, but it is surfaced on stderr.
+   */
+  async recordResultAccess(jobId: string, principal: { username: string; role: string }, action: string): Promise<void> {
+    try {
+      await this.jobRepo.appendAudit({
+        optimizationJobId: jobId,
+        action,
+        actor: principal.username,
+        reason: null,
+      })
+    } catch (error) {
+      console.error(
+        `[backend] failed to audit result action '${action}' for job '${jobId}': ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  /**
+   * Assemble the integrity-audited result read model from STORED measurements.
+   * The candidates are re-fetched from the deterministic source and every
+   * numeric is recomputed from the stored row — nothing is taken from a client.
+   */
+  private async buildResultDocument(job: OptimizationJob): Promise<OptimizationResultDocument> {
+    const result = job.result
+    if (!result) {
+      throw new AppError(404, ErrorCodes.RESULT_NOT_FOUND, `No result document for optimization job '${job.id}'`)
+    }
+
+    let candidates: CandidateLocation[] | null = null
+    let sourceError: string | undefined
+    try {
+      candidates = await this.resolveCandidates(job)
+    } catch (error) {
+      sourceError = error instanceof Error ? error.message : String(error)
+    }
+
+    const integrity = auditOptimizationResult(job, candidates, sourceError)
+    const execution = await this.resolveQuantumExecution(job)
+    const record = await this.jobRepo.findResult(job.id)
+    const stored =
+      record && (record.approximationRatio !== null || record.approximationInvalidReason !== null || record.randomSeed !== null)
+        ? {
+            approximationRatio: record.approximationRatio,
+            approximationBasis: record.approximationBasis,
+            approximationInvalidReason: record.approximationInvalidReason,
+            randomSeed: record.randomSeed,
+          }
+        : null
+    const benchmark = buildBenchmarkDocument(job, { quantumExecution: execution, stored })
+
+    const eligible = integrity.valid && result.validationStatus === 'valid' && job.status === 'completed'
+    return {
+      ...result,
+      integrity,
+      recommendation: {
+        eligible,
+        reason: eligible
+          ? null
+          : integrity.valid
+            ? 'The pipeline marked this result invalid — it is preserved for research but is not an operational recommendation.'
+            : `The backend integrity audit failed (${integrity.failed.join(', ')}) — the result is preserved for debugging/research but is not an operational recommendation.`,
+      },
+      quantumComparison: benchmark.quantum,
+      approximationRatio: benchmark.approximationRatio,
+      experiment: this.buildExperimentMetadata(job, benchmark.reproducibility),
+    }
+  }
+
+  /** Re-fetch the deterministic candidate set the pipeline consumed. */
+  private async resolveCandidates(job: OptimizationJob): Promise<CandidateLocation[]> {
+    const reference =
+      job.candidateReference ?? job.request.candidateLocationsReference ?? `gis://candidates/${job.request.candidateCount}`
+    return this.candidates.getCandidates({ reference, count: job.request.candidateCount })
+  }
+
+  /** Exact experiment configuration preserved with the job (never fabricated). */
+  private buildExperimentMetadata(job: OptimizationJob, reproducibility: BenchmarkReproducibility): ResultExperimentMetadata {
+    return {
+      problemType: job.problemType,
+      algorithm: job.algorithm,
+      executionMode: job.executionMode,
+      executionModeUsed: job.executionModeUsed,
+      backend: job.backend,
+      backendUsed: job.backendUsed,
+      qubits: job.qubitCount ?? job.result?.qubits ?? null,
+      shots: job.request.shots,
+      layers: job.request.layers,
+      fallbackPolicy: job.fallbackPolicy,
+      fallbackApplied: job.fallbackApplied,
+      fallbackReason: job.fallbackReason,
+      owner: job.owner,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      forecastReference: job.forecastReference,
+      candidateReference: job.candidateReference,
+      inputReference: job.inputReference,
+      variablesCount: job.variablesCount,
+      constraints: job.constraints,
+      objectiveConfiguration: job.objectiveConfiguration,
+      reproducibility,
+    }
+  }
+
+  /** Ownership-scoped read of the write-once audit trail. */
+  async getAuditForPrincipal(jobId: string, principal: { username: string; role: string }): Promise<OptimizationJobAuditEntry[]> {
+    await this.getJobForPrincipal(jobId, principal)
+    return this.jobRepo.listAudit(jobId)
+  }
+
+  /**
+   * Full benchmark document for a completed job — built from STORED measurements
+   * only (the pipeline executed the classical reference at run time; nothing is
+   * re-run or re-measured, so the wall-clock numbers stay write-once). Quantum
+   * execution runtime is read from the migration 006 persistence layer.
+   */
+  async getBenchmarkForPrincipal(jobId: string, principal: { username: string; role: string }): Promise<BenchmarkDocument> {
+    const job = await this.getJobForPrincipal(jobId, principal)
+    if (job.deletedAt) {
+      throw new AppError(404, ErrorCodes.JOB_NOT_FOUND, `Optimization job '${jobId}' not found`)
+    }
+    if (!job.result || !job.completedAt) {
+      throw new AppError(404, ErrorCodes.RESULT_NOT_FOUND, `No result document for optimization job '${jobId}' — no benchmark exists`)
+    }
+    const execution = await this.resolveQuantumExecution(job)
+    // The migration 007 write-once snapshot is returned verbatim (historical
+    // benchmark results are never overwritten or recomputed over a stored row).
+    const record = await this.jobRepo.findResult(job.id)
+    const stored =
+      record && (record.approximationRatio !== null || record.approximationInvalidReason !== null || record.randomSeed !== null)
+        ? {
+            approximationRatio: record.approximationRatio,
+            approximationBasis: record.approximationBasis,
+            approximationInvalidReason: record.approximationInvalidReason,
+            randomSeed: record.randomSeed,
+          }
+        : null
+    return buildBenchmarkDocument(job, { quantumExecution: execution, stored })
+  }
+
+  /** Benchmark ledger rows (completed jobs with a stored result), newest first. */
+  async listBenchmarksForPrincipal(
+    filters: BenchmarkListFilters,
+    principal: { username: string; role: string },
+  ): Promise<BenchmarkListEntry[]> {
+    const jobs = await this.jobRepo.list()
+    const visible = principal.role === 'admin' ? jobs : jobs.filter((job) => job.owner === principal.username)
+    return visible
+      .filter((job) => job.result !== null && job.completedAt !== null)
+      .filter((job) => benchmarkMatchesFilters(job, filters))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .map((job) => benchmarkListEntry(job))
+  }
+
+  /** The executor runtime of the completed quantum submission, best effort. */
+  private async resolveQuantumExecution(job: OptimizationJob): Promise<QuantumExecutionInput> {
+    // A real quantum run happened iff the result carries measurement counts: a
+    // classical-only fallback leaves executionModeUsed as the REQUESTED mode but
+    // never produces counts, and never writes quantum_jobs rows.
+    const ran = (job.result?.measurementCounts.length ?? 0) > 0
+    const repo = this.options.quantumJobRepo
+    let runtimeMs: number | null = null
+    let runtimeSource: string | null = null
+    if (repo) {
+      try {
+        const quantumJobs = await repo.findJobsByOptimizationJobId(job.id)
+        const completed = quantumJobs.find((submission) => submission.status === 'completed')
+        if (completed) {
+          const resultRow = await repo.findResult(completed.id)
+          if (resultRow) {
+            runtimeMs = resultRow.runtimeMs
+            runtimeSource = 'quantum_results.runtime_ms'
+          }
+        }
+      } catch {
+        console.error('[backend] quantum execution runtime lookup failed; benchmark reports runtimeMs=null')
+      }
+    }
+    return { ran, runtimeMs, runtimeSource }
+  }
+
+  /**
+   * Authorized soft-delete with an audit trail.
+   *
+   * Completed research results are write-once: only an `admin` principal may
+   * delete one, and every deletion records an auditable reason. The repository
+   * never hard-deletes — the row is preserved with deleted_at/deleted_by.
+   */
+  async deleteJobForPrincipal(
+    jobId: string,
+    principal: { username: string; role: string },
+    reason: string,
+  ): Promise<OptimizationJob> {
+    const job = await this.getJobForPrincipal(jobId, principal)
+    if (job.status === 'completed' && principal.role !== 'admin') {
+      throw new AppError(
+        403,
+        ErrorCodes.DELETE_PROTECTED,
+        'Completed optimization research results are write-once; only an admin may delete them, and the deletion must carry an auditable reason.',
+      )
+    }
+    return this.jobRepo.deleteJob(jobId, principal.username, reason)
   }
 
   private async executePipeline(jobId: string): Promise<void> {
@@ -252,6 +605,7 @@ export class OptimizationJobService {
       coverageRequirements: [],
       remoteQuboId: null,
       remoteQuboDoc: null,
+      submission: null,
     }
     await this.jobRepo.save(current)
 
@@ -292,6 +646,11 @@ export class OptimizationJobService {
           candidateCount: request.candidateCount,
         })
         ctx.coverageRequirements = [...resolved.coverageRequirements, ...request.coverageRequirements]
+        current.constraints = {
+          maxSensors: request.maxSensors,
+          budgetK: request.budgetK,
+          coverageRequirements: ctx.coverageRequirements,
+        }
       })
 
       // 5. normalize_features — weights normalisation + feature sanity.
@@ -309,10 +668,13 @@ export class OptimizationJobService {
         }
       })
 
-      // 6. build_objective — weighted utility per candidate.
+      // 6. build_objective — weighted utility per candidate, retained so the
+      //    derived objective terms are real, inspectable pipeline state.
       await this.advance(current, 'build_objective', 'Objective terms derived', async () => {
         const weights = request.normalizeWeights ? normalizeWeights(request.weights) : request.weights
-        void ctx.candidates.map((site) => siteUtility(site, weights))
+        ctx.objectiveTerms = Object.fromEntries(
+          ctx.candidates.map((site) => [site.id, siteUtility(site, weights)]),
+        )
       })
 
       // 7. apply_constraints_penalties — budget feasibility + penalty planning.
@@ -357,6 +719,10 @@ export class OptimizationJobService {
         }
         ctx.qubo = qubo!
         current.qubo = qubo!
+        current.variablesCount = qubo!.doc.variableCount
+        const quboBig = qubo!.doc.variableCount > this.options.quboInlineLimit
+        current.quboStorage = quboBig ? 'artifact' : 'inline'
+        current.quboArtifactReference = quboBig ? `qflare://qubo/${current.id}` : null
         await this.jobRepo.save(current)
       })
       await this.jobRepo.save(current)
@@ -423,6 +789,7 @@ export class OptimizationJobService {
         current.status = 'completed'
         current.completedAt = new Date().toISOString()
         await this.jobRepo.save(current)
+        await this.jobRepo.saveResult(this.toResultRecord(current, selected, bitstring!, quantumExec))
         this.touch(current, 'persist_result', 'Job and result document persisted')
       })
 
@@ -477,9 +844,9 @@ export class OptimizationJobService {
   }
 
   private markStatus(job: OptimizationJob, status: OptimizationJobStatus, startedAt: string | null): OptimizationJob {
-    const next = { ...job, status, startedAt }
-    this.jobRepo.save(next).catch(() => undefined)
-    return next
+    // Returns the updated job; the single caller persists it once via the
+    // awaited repository save that immediately follows.
+    return { ...job, status, startedAt }
   }
 
   private async fail(
@@ -491,6 +858,7 @@ export class OptimizationJobService {
   ): Promise<void> {
     job.status = status
     job.error = { code, message, ...(details !== undefined && { details }) }
+    job.errorMessage = message
     job.completedAt = new Date().toISOString()
     await this.jobRepo.save(job)
   }
@@ -502,10 +870,11 @@ export class OptimizationJobService {
   }
 
   private touchForFallback(job: OptimizationJob, message: string): void {
+    // Annotate the first step that is not yet done: a fallback covered it, so
+    // the executor should see WHY rather than a silently blank step detail.
     const step = job.steps.find((candidate) => candidate.status !== 'done')
-    void job
-    void message
-    void step
+    if (!step) return
+    step.detail = step.detail && step.detail !== step.label ? `${step.detail}; ${message}` : message
   }
 
   // ---------------------------------------------------------------------------
@@ -611,11 +980,12 @@ export class OptimizationJobService {
     }
 
     const mode = this.resolveExecutionMode(request)
-    const attempt = () =>
-      this.runQaoaOnce(quboId!, mode, request, seedFrom([job.id, request.forecastReference, request.candidateCount]))
+    const attempt = () => this.runQaoaOnce(job, ctx, quboId!, mode, request, seedFrom([job.id, request.forecastReference, request.candidateCount]))
 
     try {
-      return await attempt()
+      const result = await attempt()
+      await this.persistCompletedQuantumJob(job, ctx.submission, result)
+      return result
     } catch (error) {
       const quantumFailure = error instanceof QuantumServiceError
       if (!quantumFailure) throw error
@@ -625,7 +995,8 @@ export class OptimizationJobService {
       }
       if (this.options.fallbackPolicy === 'retry_simulator') {
         try {
-          const retried = await this.runQaoaOnce(quboId, 'simulator', request, seedFrom([job.id, request.forecastReference, request.candidateCount]))
+          const retried = await this.runQaoaOnce(job, ctx, quboId, 'simulator', request, seedFrom([job.id, request.forecastReference, request.candidateCount]))
+          await this.persistCompletedQuantumJob(job, ctx.submission, retried)
           this.recordFallback(job, mode, `${mode} unavailable (${error.message}); retried on simulator`)
           return retried
         } catch (secondary) {
@@ -641,26 +1012,232 @@ export class OptimizationJobService {
   }
 
   private async runQaoaOnce(
+    job: OptimizationJob,
+    ctx: PipelineContext,
     quboId: string,
     mode: QuantumExecutionMode,
     request: RunOptimizationRequest,
     seed: number,
   ): Promise<QuantumExecutionResult> {
+    ctx.submission = null
+    const backend = this.backendFor(mode, request)
     const accepted = await this.quantum.optimize({
       quboId,
       algorithm: 'qaoa',
       mode,
-      backend: this.backendFor(mode, request),
+      backend,
       shots: request.shots,
       layers: request.layers,
       seed,
     })
-    return await this.quantum.getResult(accepted.executionId)
+    const submission: NonNullable<PipelineContext['submission']> = {
+      jobId: accepted.jobId ?? null,
+      executionId: accepted.executionId,
+      mode,
+      backend,
+      shots: request.shots,
+      layers: request.layers,
+    }
+    ctx.submission = submission
+    if (submission.jobId) {
+      await this.persistSubmittedQuantumJob(job, submission)
+    }
+    try {
+      const result = await this.quantum.getResult(accepted.executionId)
+      if (!submission.jobId && result.jobId) {
+        submission.jobId = result.jobId
+      }
+      return result
+    } catch (error) {
+      if (submission.jobId) {
+        await this.persistFailedQuantumJob(job, submission, error)
+      }
+      throw error
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quantum job persistence (migration 006)
+  //
+  // Records every REAL submission, one honest row per attempt: a `queued` row
+  // the moment the quantum service accepts the job, then a `completed` row +
+  // `quantum_results` on success or a `failed` row with the stable error code.
+  // `executionMode`/`backend` are the mode + backend of THAT submission, so the
+  // simulator/hardware distinction survives fallback ladders. No row is ever
+  // invented for an execution the platform did not submit. Persistence is best
+  // effort — a store failure must never take the optimization pipeline down.
+  // ---------------------------------------------------------------------------
+
+  private async persistSubmittedQuantumJob(
+    job: OptimizationJob,
+    submission: NonNullable<PipelineContext['submission']>,
+  ): Promise<void> {
+    const repo = this.options.quantumJobRepo
+    if (!repo || !submission.jobId) return
+    try {
+      const nowIso = new Date().toISOString()
+      const existing = await repo.findJobById(submission.jobId)
+      const row: QuantumJobRecord = {
+        id: submission.jobId,
+        optimizationJobId: job.id,
+        algorithm: 'qaoa',
+        backend: submission.backend,
+        executionMode: submission.mode,
+        qubits: null,
+        shots: submission.shots,
+        layers: submission.layers,
+        status: 'queued',
+        submittedAt: existing?.submittedAt ?? nowIso,
+        startedAt: existing?.startedAt ?? null,
+        completedAt: null,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: existing?.createdAt ?? nowIso,
+      }
+      await repo.saveJob(row)
+    } catch (error) {
+      console.error(`[backend] quantum job persistence failed (submit): ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  private async persistCompletedQuantumJob(
+    job: OptimizationJob,
+    submission: PipelineContext['submission'],
+    result: QuantumExecutionResult,
+  ): Promise<void> {
+    const repo = this.options.quantumJobRepo
+    const jobId = submission?.jobId ?? result.jobId ?? null
+    if (!repo || !jobId || !submission) return
+    try {
+      const nowIso = new Date().toISOString()
+      const existing = await repo.findJobById(jobId)
+      const row: QuantumJobRecord = {
+        id: jobId,
+        optimizationJobId: job.id,
+        algorithm: 'qaoa',
+        backend: submission.backend,
+        executionMode: submission.mode,
+        qubits: result.qubitCount,
+        shots: submission.shots,
+        layers: submission.layers,
+        status: 'completed',
+        submittedAt: existing?.submittedAt ?? nowIso,
+        startedAt: existing?.startedAt ?? nowIso,
+        completedAt: nowIso,
+        errorCode: null,
+        errorMessage: null,
+        createdAt: existing?.createdAt ?? nowIso,
+      }
+      await repo.saveJob(row)
+      const quantumResult: QuantumResultRecord = {
+        id: `${jobId}-R1`,
+        quantumJobId: jobId,
+        bitstring: result.topBitstring,
+        counts: Object.fromEntries(result.measurementCounts.map((entry) => [entry.bitstring, entry.count])),
+        objectiveValue: Number.isFinite(result.objectiveValue as number) ? (result.objectiveValue as number) : null,
+        runtimeMs: result.executionTimeMs,
+        rawMetadataReference: null,
+        createdAt: nowIso,
+      }
+      await repo.saveResult(quantumResult)
+    } catch (error) {
+      console.error(`[backend] quantum job persistence failed (complete): ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  private async persistFailedQuantumJob(
+    job: OptimizationJob,
+    submission: NonNullable<PipelineContext['submission']>,
+    error: unknown,
+  ): Promise<void> {
+    const repo = this.options.quantumJobRepo
+    if (!repo || !submission.jobId) return
+    try {
+      const nowIso = new Date().toISOString()
+      const existing = await repo.findJobById(submission.jobId)
+      const row: QuantumJobRecord = {
+        id: submission.jobId,
+        optimizationJobId: job.id,
+        algorithm: 'qaoa',
+        backend: submission.backend,
+        executionMode: submission.mode,
+        qubits: null,
+        shots: submission.shots,
+        layers: submission.layers,
+        status: 'failed',
+        submittedAt: existing?.submittedAt ?? nowIso,
+        startedAt: existing?.startedAt ?? nowIso,
+        completedAt: nowIso,
+        errorCode: error instanceof QuantumServiceError ? error.code : 'QUANTUM_EXECUTION_FAILED',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        createdAt: existing?.createdAt ?? nowIso,
+      }
+      await repo.saveJob(row)
+    } catch (persistError) {
+      console.error(`[backend] quantum job persistence failed (fail): ${persistError instanceof Error ? persistError.message : String(persistError)}`)
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Result assembly
   // ---------------------------------------------------------------------------
+
+  /** Build the normalized persistence row from the assembled result document. */
+  private toResultRecord(
+    job: OptimizationJob,
+    selected: CandidateLocation[],
+    bitstring: string,
+    quantumExec: QuantumExecutionResult | null,
+  ): OptimizationResultRecord {
+    const result = job.result as OptimizationResult
+    const gap = result.classicalComparison.gapVsQuantum
+    // Migration 007 classical benchmark reference snapshot: measured values only,
+    // computed once here and WRITE-ONCE in the repository (never overwritten,
+    // never recomputed over a stored row).
+    const quantumObjective = quantumExec ? result.objectiveValue : null
+    const ratio = computeApproximationRatio(
+      result.classicalComparison.objectiveValue,
+      quantumObjective,
+      result.classicalComparison.method ?? null,
+      result.validationStatus === 'valid',
+    )
+    return {
+      id: `${job.id}-R1`,
+      optimizationJobId: job.id,
+      bitstring,
+      selectedLocationIds: selected.map((site) => site.id),
+      objectiveValue: result.objectiveValue,
+      constraintViolations: result.constraintViolations,
+      validationStatus: result.validationStatus,
+      runtimeMs: result.executionTimeMs,
+      classicalObjective: result.classicalComparison.objectiveValue,
+      quantumObjective,
+      approximationQuality:
+        gap !== undefined && gap !== null ? Number(Math.max(0, Math.min(1, 1 - gap)).toFixed(4)) : null,
+      classicalSolver: result.classicalComparison.method === 'exhaustive' ? 'exhaustive' : result.classicalComparison.method === 'greedy' ? 'greedy' : null,
+      classicalRuntimeMs: result.classicalComparison.executionTimeMs,
+      approximationRatio: ratio.value,
+      approximationBasis: ratio.basis,
+      approximationInvalidReason: ratio.invalidReason as OptimizationResultRecord['approximationInvalidReason'],
+      randomSeed: seedFrom([job.id, job.request.forecastReference, job.request.candidateCount]),
+      // Migration 008 validation contract: the verdict is recorded once, with
+      // its timestamp, and the objective is persisted with its explanation so
+      // the score is auditable from the row without recomputation.
+      validationTimestamp: result.validationStatus === 'pending_validation' ? null : result.endedAt,
+      validationDetails: {
+        status: result.validationStatus,
+        summary: result.validationSummary,
+        violationCount: result.constraintViolations.length,
+        violations: result.constraintViolations,
+      },
+      explanationMetadata: {
+        objectiveBreakdown: result.objectiveBreakdown,
+        coverage: result.coverage,
+        quantumAdvantageClaimed: false,
+      },
+      createdAt: result.endedAt,
+    }
+  }
 
   private buildResult(
     job: OptimizationJob,
@@ -722,6 +1299,7 @@ export class OptimizationJobService {
       constraintViolations: verdict.violations,
       validationStatus: verdict.violations.length === 0 ? 'valid' : 'invalid',
       validationSummary: verdict.summary,
+      bitstring,
       qubo: quboDoc,
       measurementCounts,
       energyHistory,
@@ -747,4 +1325,24 @@ function weightsValid(weights: { [key: string]: number }): boolean {
 function newJobId(): string {
   const randPart = Math.random().toString(36).slice(2, 8).toUpperCase()
   return `QOP-${Date.now().toString(36).toUpperCase()}-${randPart}`
+}
+
+/** Apply the `GET /api/benchmarks` filters to a completed job (AND semantics). */
+function benchmarkMatchesFilters(job: OptimizationJob, filters: BenchmarkListFilters): boolean {
+  if (filters.problemType && job.problemType !== filters.problemType) return false
+  if (filters.algorithm && job.algorithm !== filters.algorithm) return false
+  if (filters.executionMode) {
+    const matches = job.executionMode === filters.executionMode || job.executionModeUsed === filters.executionMode
+    if (!matches) return false
+  }
+  const createdMs = Date.parse(job.createdAt)
+  if (filters.from) {
+    const lower = Date.parse(filters.from)
+    if (!Number.isNaN(lower) && createdMs < lower) return false
+  }
+  if (filters.to) {
+    const upper = Date.parse(filters.to)
+    if (!Number.isNaN(upper) && createdMs > upper) return false
+  }
+  return true
 }

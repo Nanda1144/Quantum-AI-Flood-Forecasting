@@ -1,4 +1,11 @@
 /**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: backend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+/**
  * Backend domain types.
  *
  * These mirror the frontend contract (`frontend/src/types/ai.ts`) so the
@@ -134,6 +141,12 @@ export interface AnalyticsSnapshot {
     lastTrainedAt: string
     lastEvaluatedAt: string
     metrics: ModelInfoContract['metrics']
+    /**
+     * True when the registry has no row for the forecast's model, so the panel
+     * is assembled from the forecast record instead of stored model metadata.
+     * The frontend labels this so a fallback is never mistaken for registry data.
+     */
+    derived?: boolean
   }
   recentPredictions: {
     forecastId: string
