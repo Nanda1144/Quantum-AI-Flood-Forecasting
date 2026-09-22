@@ -1,8 +1,8 @@
-
 import { useState } from "react";
 import Dashboard from "./pages/Dashboard";
 import DataManagement from "./pages/DataManagement";
 import ExistingSolutions from "./pages/ExistingSolutions";
+import ImportHistory from "./components/data/ImportHistory";
 import Sidebar from "./components/Sidebar";
 
 function App() {
@@ -15,6 +15,9 @@ function App() {
 
       case "Existing Solutions":
         return <ExistingSolutions />;
+
+      case "Import History":
+        return <ImportHistory />;
 
       default:
         return <Dashboard />;
@@ -36,4 +39,3 @@ function App() {
 }
 
 export default App;
-

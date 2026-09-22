@@ -1,0 +1,6 @@
+date,location,rainfall_mm,river_level_m,temperature_c,flow_rate_m3s
+2026-09-18,Vijayawada,42.6,12.4,29.1,842
+2026-09-18,Rajahmundry,38.2,11.8,28.7,765
+2026-09-17,Amalapuram,51.4,10.9,30.2,698
+2026-09-17,Eluru,31.7,9.6,29.8,621
+2026-09-16,Machilipatnam,27.5,8.9,29.4,580

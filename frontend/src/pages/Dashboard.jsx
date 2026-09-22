@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Database,
   CloudRain,
@@ -7,7 +8,38 @@ import {
   Radio,
 } from "lucide-react";
 
+import { getDatasets } from "../services/dataService";
+
 function Dashboard() {
+  const [datasetCount, setDatasetCount] = useState(0);
+
+  useEffect(() => {
+    loadDatasetCount();
+  }, []);
+
+  async function loadDatasetCount() {
+    try {
+      const response = await getDatasets();
+
+      let datasets = [];
+
+      if (Array.isArray(response)) {
+        datasets = response;
+      } else if (Array.isArray(response?.value)) {
+        datasets = response.value;
+      } else if (Array.isArray(response?.data)) {
+        datasets = response.data;
+      } else if (Array.isArray(response?.datasets)) {
+        datasets = response.datasets;
+      }
+
+      setDatasetCount(datasets.length);
+    } catch (error) {
+      console.error("Failed to load dataset count:", error);
+      setDatasetCount(0);
+    }
+  }
+
   return (
     <div className="dashboard-page">
       <div className="page-heading">
@@ -29,7 +61,7 @@ function Dashboard() {
           <Database size={28} />
           <div>
             <span>Total Datasets</span>
-            <strong>0</strong>
+            <strong>{datasetCount}</strong>
           </div>
         </div>
 

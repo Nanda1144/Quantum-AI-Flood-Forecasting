@@ -7,7 +7,8 @@ import {
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
-import { uploadDataset } from "../../services/api";
+
+import { uploadDataset } from "../../services/dataService";
 
 function DatasetUpload({ onUploadSuccess }) {
   const fileInputRef = useRef(null);
@@ -58,10 +59,18 @@ function DatasetUpload({ onUploadSuccess }) {
 
       console.log("Dataset upload response:", result);
 
-      setUploadSuccess("Dataset uploaded successfully.");
+      setUploadSuccess(
+        `${result.file_name} uploaded successfully.`
+      );
+
+      setSelectedFile(null);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
 
       if (onUploadSuccess) {
-        onUploadSuccess();
+        await onUploadSuccess(result);
       }
     } catch (error) {
       console.error("Dataset upload error:", error);
@@ -172,3 +181,4 @@ function DatasetUpload({ onUploadSuccess }) {
 }
 
 export default DatasetUpload;
+
