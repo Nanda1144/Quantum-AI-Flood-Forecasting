@@ -16,12 +16,11 @@ import {
   Timer,
   type LucideIcon,
 } from 'lucide-react'
-import type { OptimizationResult, QuantumJobSummary } from '../../types/optimization'
+import type { BenchmarkDocument } from '../../types/benchmark'
 import { benchmarkSummaryStats } from '../../lib/benchmark'
 
 interface BenchmarkSummaryProps {
-  summary: QuantumJobSummary
-  result: OptimizationResult
+  document: BenchmarkDocument
 }
 
 const CARD_META: { icon: LucideIcon; key: keyof ReturnType<typeof benchmarkSummaryStats>; hint: string }[] = [
@@ -31,12 +30,12 @@ const CARD_META: { icon: LucideIcon; key: keyof ReturnType<typeof benchmarkSumma
   { icon: Boxes, key: 'classicalObjective', hint: 'Weighted utility fraction captured by the reference (higher is better)' },
   { icon: Target, key: 'quantumObjective', hint: 'Weighted utility fraction captured by QAOA (higher is better)' },
   { icon: Timer, key: 'classicalRuntime', hint: 'Stored reference wall time' },
-  { icon: Clock, key: 'quantumRuntime', hint: 'Stored QAOA wall time' },
+  { icon: Clock, key: 'quantumRuntime', hint: 'Stored QAOA executor wall time (pipeline total when not persisted)' },
   { icon: ShieldCheck, key: 'constraintViolations', hint: 'Constraint violations in the QAOA decode' },
 ]
 
-export function BenchmarkSummary({ summary, result }: BenchmarkSummaryProps) {
-  const stats = benchmarkSummaryStats(summary, result)
+export function BenchmarkSummary({ document }: BenchmarkSummaryProps) {
+  const stats = benchmarkSummaryStats(document)
   return (
     <section className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Benchmark summary">
       {CARD_META.map(({ icon: Icon, key, hint }) => (

@@ -6,12 +6,16 @@
  */
 
 /**
- * Interactive heatmap over the served Q-matrix (N×N symmetric quadratic part).
+ * Interactive heatmap over the served Q-matrix (N×N quadratic part).
  *
- * Values are rendered exactly as served by the backend — colors only encode
- * their sign and magnitude, nothing is rederived. Large matrices are windowed
- * (only visible rows are mounted) so candidate counts up to the platform's
- * maximum stay responsive. Row/column labels are the variable (candidate) ids.
+ * The backend stores the quadratic half as upper-triangular: Q[i][j] for i<j is
+ * authoritative and the lower mirror Q[j][i] is served as 0 by the symmetric
+ * QUBO convention (x_i·x_j = x_j·x_i). Values are rendered exactly as served —
+ * colors only encode sign and magnitude, nothing is rederived, so the dark
+ * lower triangle is an honest reflection of the stored convention, not a bug.
+ * Large matrices are windowed (only visible rows are mounted) so candidate
+ * counts up to the platform's maximum stay responsive. Row/column labels are
+ * the variable (candidate) ids.
  */
 
 import { useMemo, useState } from 'react'
@@ -34,7 +38,7 @@ function cellColor(value: number, maxAbs: number, zero: boolean): string {
 }
 
 interface QuboMatrixHeatmapProps {
-  /** Served symmetric quadratic matrix (N×N), authoritative. */
+  /** Served quadratic part (N×N) — upper-triangular by stored convention, authoritative. */
   quadratic: number[][] | null
   /** Variable labels (ids) — length N. */
   variables: string[]
@@ -95,7 +99,7 @@ export function QuboMatrixHeatmap({ quadratic, variables }: QuboMatrixHeatmapPro
           <Table2 size={14} className="text-ai-300" aria-hidden="true" />
           Q matrix coefficient heatmap
           <span className="rounded border border-forest-600 bg-forest-800/70 px-1.5 py-0.5 font-mono text-[11px] normal-case text-mist-300">
-            {n} × {n} quadratic · variables as row/column labels
+            {n} × {n} quadratic · upper-triangle convention · variables as row/column labels
           </span>
         </p>
         <div className="flex items-center gap-1">

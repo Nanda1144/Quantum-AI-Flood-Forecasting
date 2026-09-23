@@ -85,6 +85,23 @@ describe('ModelsComparisonService', () => {
     assert.deepEqual(byInference.items.map((r) => r.name), ['Beta', 'Gamma', 'Alpha', 'Delta', 'Echo'])
   })
 
+  it('sorts by mae ascending (lower is better) and excludes unscored rows from the window', async () => {
+    const { items } = await service.compare({ sort: 'mae' })
+    assert.deepEqual(items.map((r) => r.name), ['Beta', 'Gamma', 'Delta', 'Alpha', 'Echo'])
+    const desc = await service.compare({ sort: 'mae', direction: 'desc' })
+    assert.deepEqual(desc.items.map((r) => r.name), ['Alpha', 'Delta', 'Gamma', 'Beta', 'Echo'])
+  })
+
+  it('filters by evaluatedAt ascending — rows without an evaluation sort last', async () => {
+    const { items } = await service.compare({ sort: 'evaluatedAt', direction: 'asc' })
+    assert.deepEqual(items.map((r) => r.name), ['Delta', 'Alpha', 'Gamma', 'Beta', 'Echo'])
+  })
+
+  it('filters by an end-only evaluation window', async () => {
+    const { items } = await service.compare({ to: '2026-08-25T23:59:59.999Z' })
+    assert.deepEqual(items.map((r) => r.name), ['Alpha', 'Delta'])
+  })
+
   it('sorts by name alphabetically ascending by default', async () => {
     const { items } = await service.compare({ sort: 'name' })
     assert.deepEqual(items.map((r) => r.name), ['Alpha', 'Beta', 'Delta', 'Echo', 'Gamma'])

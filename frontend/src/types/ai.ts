@@ -203,3 +203,12 @@ export interface ModelComparisonQuery {
   to?: string
   status?: RegistryStatus
 }
+
+/** One historical evaluation run for a model version (GET /api/ai/models/:id/metrics). */
+export interface ModelMetricsHistoryItem {
+  metrics: ComparisonMetricScores
+  trainingTimeMs?: number
+  inferenceTimeMs?: number
+  evaluatedAt: string
+  evaluationDataset: string
+}

@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS model_metrics (
 
 CREATE INDEX IF NOT EXISTS idx_model_metrics_version ON model_metrics (model_version_id);
 CREATE INDEX IF NOT EXISTS idx_model_metrics_evaluated_at ON model_metrics (evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_model_metrics_version_evaluated_at ON model_metrics (model_version_id, evaluated_at DESC);
 
 DROP TRIGGER IF EXISTS trg_model_versions_updated_at ON model_versions;
 CREATE TRIGGER trg_model_versions_updated_at

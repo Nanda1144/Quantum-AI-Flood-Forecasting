@@ -14,7 +14,7 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.ts'
 import { apiLimiter } from './middleware/rate-limit.ts'
 import { authRoutes } from './routes/auth.routes.ts'
 import { aiRoutes } from './routes/ai.routes.ts'
-import { optimizationRoutes } from './routes/optimization.routes.ts'
+import { benchmarkSummaryRouter, optimizationRoutes } from './routes/optimization.routes.ts'
 
 export async function createApp(container?: Container): Promise<express.Express> {
   const c = container ?? (await buildContainer())
@@ -32,6 +32,9 @@ export async function createApp(container?: Container): Promise<express.Express>
   app.use('/api/auth', authRoutes(c.auth))
   app.use('/api/ai', aiRoutes(c))
   app.use('/api/optimization', optimizationRoutes(c))
+  // External benchmark ledger alias — `GET /api/benchmarks` (completed runs,
+  // newest first). Shares the same handler as `/api/optimization/benchmarks`.
+  app.use(benchmarkSummaryRouter(c))
 
   app.use(notFoundHandler)
   app.use(errorHandler)

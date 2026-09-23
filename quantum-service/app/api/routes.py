@@ -164,6 +164,35 @@ def _lift_weights(weights: dict[str, float]) -> dict[str, float]:
     return {key: float(weights.get(key, 0.0)) for key in qmath.OBJECTIVE_KEYS}
 
 
+# Every numeric candidate field feeds the QUBO coefficients. NaN/Infinity must
+# never reach the matrix: pydantic's `ge`/`le` bounds reject NaN but let
+# `+Infinity` through unscalars (and unconstrained floats accept both), so the
+# contract rejects non-finite values explicitly — otherwise the doc would
+# carry NaN/Inf coefficients and serialise as a raw 500.
+_CANDIDATE_FINITE_FIELDS = (
+    "latitude",
+    "longitude",
+    "flood_risk",
+    "population_exposure",
+    "infrastructure_criticality",
+    "communication_score",
+    "sensor_cost_k",
+    "coverage_radius_km",
+)
+
+
+def _require_finite_candidates(candidates: list[dict[str, Any]]) -> None:
+    for candidate in candidates:
+        for field in _CANDIDATE_FINITE_FIELDS:
+            value = candidate.get(field)
+            if value is None or not math.isfinite(float(value)):
+                raise QuantumError(
+                    "INVALID_QUBO_COEFFICIENTS",
+                    f"Candidate '{candidate.get('id')}' field '{field}' must be a finite number",
+                    422,
+                )
+
+
 def _public_qubo(doc: dict[str, Any]) -> dict[str, Any]:
     return {
         "variable_count": doc["variable_count"],
@@ -211,6 +240,7 @@ def _public_by_kind(doc: dict[str, Any]) -> dict[str, Any]:
 
 def _create_sensor_placement_qubo(payload: CreateQuboRequest) -> dict:
     candidates = [candidate.model_dump() for candidate in payload.candidates]
+    _require_finite_candidates(candidates)
     weights = _lift_weights(payload.weights)
     any_positive = any(value > 0 for value in weights.values())
     if not all(math.isfinite(value) and value >= 0 for value in weights.values()) or not any_positive:
@@ -218,6 +248,9 @@ def _create_sensor_placement_qubo(payload: CreateQuboRequest) -> dict:
 
     if payload.constraints.max_sensors > len(candidates):
         raise QuantumError("VALIDATION_ERROR", "max_sensors cannot exceed candidate count", 422)
+
+    if payload.constraints.budget_k is not None and not math.isfinite(payload.constraints.budget_k):
+        raise QuantumError("INVALID_QUBO_COEFFICIENTS", "budget_k must be a finite number", 422)
 
     if payload.constraints.budget_k == 0:
         raise QuantumError("INFEASIBLE_BUDGET", "A zero budget cannot fund any sensor", 422)

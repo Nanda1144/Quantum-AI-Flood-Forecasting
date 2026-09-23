@@ -15,22 +15,21 @@
  */
 
 import { FileJson2, FileSpreadsheet } from 'lucide-react'
-import type { OptimizationResult, QuantumJobSummary } from '../../types/optimization'
+import type { BenchmarkDocument } from '../../types/benchmark'
 import { buildBenchmarkCsv, buildBenchmarkReport, downloadFile } from '../../lib/benchmark'
 
 interface BenchmarkExportProps {
-  summary: QuantumJobSummary
-  result: OptimizationResult
+  document: BenchmarkDocument
 }
 
-export function BenchmarkExport({ summary, result }: BenchmarkExportProps) {
+export function BenchmarkExport({ document }: BenchmarkExportProps) {
   const exportReport = () => {
-    const report = buildBenchmarkReport(summary, result)
-    downloadFile(`qflare-benchmark-${summary.jobId}.json`, JSON.stringify(report, null, 2), 'application/json')
+    const report = buildBenchmarkReport(document)
+    downloadFile(`qflare-benchmark-${document.jobId}.json`, JSON.stringify(report, null, 2), 'application/json')
   }
 
   const exportCsv = () => {
-    downloadFile(`qflare-benchmark-${summary.jobId}.csv`, buildBenchmarkCsv(summary, result), 'text/csv')
+    downloadFile(`qflare-benchmark-${document.jobId}.csv`, buildBenchmarkCsv(document), 'text/csv')
   }
 
   return (

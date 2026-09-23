@@ -239,7 +239,7 @@ export interface OptimizationResult {
   coverage: CoverageStats | null
   constraintViolations: ConstraintViolation[]
   validationStatus: 'valid' | 'invalid'
-  validationSummary: string
+  validationSummary: string | null
   /** Decoded solution bitstring reported verbatim by the executor. */
   bitstring: string
   qubo: QuboDocument
@@ -426,7 +426,7 @@ export interface QuboFormulation {
   offset: number
   /** Served linear vector (authoritative, length N) or null when no build. */
   linear: number[] | null
-  /** Served symmetric quadratic matrix (N×N) or null when no build. */
+  /** Served quadratic part (N×N) or null when no build. Stored as an upper-triangular half — Q[j][i]=0 for j<i, mirroring Q[i][j] by the symmetric QUBO convention — so it is rendered exactly as served, never re-mirrored in React. */
   quadratic: number[][] | null
   penaltyScale: number | null
   summary: {

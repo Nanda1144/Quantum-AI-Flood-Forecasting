@@ -29,6 +29,7 @@ interface ColumnDef {
 const COLUMNS: ColumnDef[] = [
   { key: 'name', label: 'Model' },
   { label: 'Version' },
+  { label: 'Dataset' },
   { label: 'Algorithm' },
   { key: 'mae', label: 'MAE', align: 'right' },
   { key: 'rmse', label: 'RMSE', align: 'right' },
@@ -119,6 +120,9 @@ export function ComparisonTable({
                   </th>
                   <td className="max-w-[140px] truncate px-4 py-3 font-mono text-xs text-mist-400" title={row.version}>
                     {row.version}
+                  </td>
+                  <td className="max-w-[160px] truncate px-4 py-3 font-mono text-[11px] text-mist-500" title={row.dataset}>
+                    {row.dataset}
                   </td>
                   <td className="max-w-[160px] truncate px-4 py-3 text-mist-300" title={row.algorithm}>
                     {row.algorithm}

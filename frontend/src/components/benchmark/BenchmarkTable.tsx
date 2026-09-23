@@ -5,17 +5,16 @@
  * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
-import type { OptimizationResult, QuantumJobSummary } from '../../types/optimization'
+import type { BenchmarkDocument } from '../../types/benchmark'
 import { benchmarkRows } from '../../lib/benchmark'
 
 interface BenchmarkTableProps {
-  summary: QuantumJobSummary
-  result: OptimizationResult
+  document: BenchmarkDocument
 }
 
 /** The Metric | Classical | QAOA table — every cell is a stored value or a clear dash. */
-export function BenchmarkTable({ summary, result }: BenchmarkTableProps) {
-  const rows = benchmarkRows(summary, result)
+export function BenchmarkTable({ document }: BenchmarkTableProps) {
+  const rows = benchmarkRows(document)
   return (
     <section className="glass-card p-0" aria-label="Metric comparison table">
       <div className="border-b border-forest-700/70 px-5 py-3">
@@ -27,7 +26,7 @@ export function BenchmarkTable({ summary, result }: BenchmarkTableProps) {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-xs">
           <caption className="sr-only">
-            Quantum vs classical metric comparison for experiment {summary.jobId}.
+            Quantum vs classical metric comparison for experiment {document.jobId}.
           </caption>
           <thead>
             <tr className="border-b border-forest-700/70 text-[11px] uppercase tracking-wider text-mist-500">

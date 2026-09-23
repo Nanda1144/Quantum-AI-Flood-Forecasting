@@ -584,8 +584,16 @@ export interface QuboMetadata {
   createdAt?: string
 }
 
-/** Lifecycle status of a persisted quantum submission (migration 006). */
-export type QuantumJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+/**
+ * Lifecycle status of a persisted quantum submission (migrations 006 + 009).
+ *
+ * The full terminal set mirrors the quantum service's state machine:
+ * `queued -> running -> completed | failed | cancelled | invalid` where
+ * `invalid` marks a submission whose measured bitstring did not match the
+ * declared binary variables (INVALID_EXECUTION_RESULT). Migration 009 widened
+ * the `quantum_jobs.status` CHECK to admit `invalid`.
+ */
+export type QuantumJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'invalid'
 
 /**
  * Persisted quantum submission record (`quantum_jobs`, migration 006).

@@ -212,13 +212,33 @@ export class HttpOptimizationAdapter implements OptimizationAdapter {
     if (signal.aborted) throw new Error('Run aborted')
 
     const deadline = Date.now() + 90_000
+    let timedOut = false
     for (;;) {
       const pipeline = await fetchOpt<RemotePipeline>(`/api/optimization/jobs/${encodeURIComponent(run.jobId)}/pipeline`)
       for (const stage of pipeline.stages ?? []) {
         onUpdate({ stageId: stage.id, status: stage.status, error: stage.error })
       }
-      if (pipeline.completed || Date.now() > deadline) break
+      if (pipeline.completed) {
+        const failed = (pipeline.stages ?? []).find((stage) => stage.status === 'failed')
+        if (failed) {
+          throw {
+            code: 'RUN_FAILED',
+            message: failed.error ?? `Optimization pipeline failed at stage ${failed.label ?? failed.id}`,
+          } satisfies ApiError
+        }
+        break
+      }
+      if (Date.now() > deadline) {
+        timedOut = true
+        break
+      }
       await sleep(750, signal)
+    }
+    if (timedOut) {
+      throw {
+        code: 'RUN_TIMEOUT',
+        message: `Optimization job ${run.jobId} did not complete within 90 seconds — check the job record before retrying`,
+      } satisfies ApiError
     }
 
     const result = await fetchOpt<OptimizationResult>(`/api/optimization/jobs/${encodeURIComponent(run.jobId)}/result`)

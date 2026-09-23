@@ -34,7 +34,7 @@ function hasScores(row: ModelComparisonRow): boolean {
 }
 
 export function ModelComparison() {
-  const { data, isMock, loading, error, query, updateQuery, reset, refetch } = useModelComparison()
+  const { data, loading, error, query, updateQuery, reset, refetch } = useModelComparison()
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
@@ -82,7 +82,7 @@ export function ModelComparison() {
 
   const handleSelectModel = (modelId: string) => {
     setSelectedModelId(modelId)
-    detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    detailRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
   }
 
   const toggleModel = (name: string) => {
@@ -122,15 +122,6 @@ export function ModelComparison() {
       aria-busy={loading}
     >
       <div className="mx-auto max-w-[1440px] space-y-5">
-        {/* ---- Sample-data badge (backend unavailable, clearly flagged) ---- */}
-        {isMock && (
-          <StateBanner
-            kind="demo"
-            title="Sample Data Mode"
-            message="Showing sample data. Connect the backend API for live model registry rows."
-          />
-        )}
-
         {/* ---- Loading (first paint only) ---- */}
         {loading && !data && <ComparisonSkeleton />}
 

@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -71,9 +73,65 @@ def test_create_qubo_returns_document() -> None:
     assert doc["variable_count"] == 4
     assert len(doc["variables"]) == 4
     assert len(doc["matrix"]) == 4
-    assert all(len(row) == 5 for row in doc["matrix"])
+    # Stored doc convention shared with the Node backend: N rows × 2N columns
+    # (quadratic row ‖ full linear vector).
+    assert all(len(row) == 8 for row in doc["matrix"])
     assert doc["expression"]
     assert isinstance(doc["offset"], float)
+
+
+def _post_raw(payload: dict) -> object:
+    """Send the payload as raw JSON text so NaN/Infinity literals survive.
+
+    httpx's `json=` override refuses to serialise non-finite floats, but a
+    real caller can always send `NaN`/`Infinity` literals in the body — those
+    must still be rejected by the contract, not crash it.
+    """
+    return client.post("/quantum/qubo", content=json.dumps(payload), headers={"content-type": "application/json"})
+
+
+def test_non_finite_budget_k_rejected() -> None:
+    payload = _qubo_payload()
+    payload["constraints"]["budget_k"] = float("inf")
+    res = _post_raw(payload)
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "INVALID_QUBO_COEFFICIENTS"
+
+    # Negative budgets are already guarded by pydantic's ge=0 bound.
+    payload = _qubo_payload()
+    payload["constraints"]["budget_k"] = float("-inf")
+    res = _post_raw(payload)
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_non_finite_candidate_coordinates_rejected() -> None:
+    for field in ("latitude", "longitude"):
+        for value in (float("nan"), float("inf")):
+            payload = _qubo_payload()
+            payload["candidates"][0][field] = value
+            res = _post_raw(payload)
+            assert res.status_code == 422
+            assert res.json()["error"]["code"] == "INVALID_QUBO_COEFFICIENTS"
+            assert "latitude" in res.json()["error"]["message"] or "longitude" in res.json()["error"]["message"]
+
+
+def test_non_finite_candidate_metrics_rejected() -> None:
+    # Unbounded metrics (cost, radius) reach the route guard; bounded ones
+    # (fractions in [0,1]) are already rejected by pydantic. Either way the
+    # contract returns a clean 422 — never a NaN matrix or a raw 500.
+    for field in ("flood_risk", "population_exposure", "infrastructure_criticality", "communication_score", "sensor_cost_k", "coverage_radius_km"):
+        payload = _qubo_payload()
+        payload["candidates"][1][field] = float("nan")
+        res = _post_raw(payload)
+        assert res.status_code == 422
+        assert res.json()["error"]["code"] in {"INVALID_QUBO_COEFFICIENTS", "VALIDATION_ERROR"}
+    for field in ("sensor_cost_k", "coverage_radius_km"):
+        payload = _qubo_payload()
+        payload["candidates"][1][field] = float("inf")
+        res = _post_raw(payload)
+        assert res.status_code == 422
+        assert res.json()["error"]["code"] == "INVALID_QUBO_COEFFICIENTS"
 
 
 def test_optimize_then_result_roundtrip() -> None:

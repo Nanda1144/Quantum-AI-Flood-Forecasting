@@ -463,7 +463,7 @@ export class PostgresModelComparisonRepository implements ModelComparisonReposit
     if (ids.length === 0) return []
     const result = await getPool().query<ComparisonRow>(
       `${VERSION_WITH_LATEST_METRICS_SQL}
-       WHERE v.id::text = ANY($1::text[])`,
+       WHERE v.id = ANY($1::bigint[])`,
       [ids],
     )
     return result.rows.map(rowToComparison)

@@ -18,6 +18,7 @@ interface ExecutionPanelProps {
   runState: RunState
   canRun: boolean
   runError: string | null
+  runNote?: string | null
   onRun: () => void
   onCancel: () => void
 }
@@ -28,6 +29,7 @@ export function ExecutionPanel({
   runState,
   canRun,
   runError,
+  runNote,
   onRun,
   onCancel,
 }: ExecutionPanelProps) {
@@ -120,13 +122,18 @@ export function ExecutionPanel({
           />
           <div className="rounded-lg border border-forest-600 bg-forest-800/50 px-3 py-2">
             <p className="text-[11px] uppercase tracking-wide text-mist-500">Objective</p>
-            <p className="font-mono text-lg text-emerald-300">{config.hardwareEnabled ? 'hardware' : 'simulator'}</p>
+            <p className="font-mono text-lg text-emerald-300">{config.executionMode}</p>
           </div>
         </div>
 
         {runError && (
           <p role="alert" className="rounded-lg border border-critical-500/40 bg-critical-500/10 px-3 py-2 text-xs text-critical-400">
             {runError}
+          </p>
+        )}
+        {runNote && !runError && (
+          <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            {runNote}
           </p>
         )}
       </div>

@@ -28,7 +28,13 @@
  */
 
 import { AppError, ErrorCodes, type ErrorCode } from '../envelope.ts'
-import { QuantumServiceError, type QuantumExecutionResult, type QuantumServiceClient } from '../clients/quantum-service.client.ts'
+import {
+  QUANTUM_TERMINAL_STATUSES,
+  QuantumServiceError,
+  type QuantumExecutionResult,
+  type QuantumJobStatusDocument,
+  type QuantumServiceClient,
+} from '../clients/quantum-service.client.ts'
 import { solveClassicalReference, type ClassicalRun } from '../lib/optimization/classical.ts'
 import { benchmarkListEntry, buildBenchmarkDocument, computeApproximationRatio, type QuantumExecutionInput } from '../lib/optimization/benchmark.ts'
 import { auditOptimizationResult } from '../lib/optimization/result-validation.ts'
@@ -90,6 +96,10 @@ export interface OptimizationJobServiceOptions {
    * a `quantum_results` row. Absent (tests / demo), nothing is persisted.
    */
   quantumJobRepo?: QuantumJobRepository
+  /** Poll cadence for observing a submitted quantum job's lifecycle (GET /quantum/jobs/:id/status). */
+  statusPollIntervalMs?: number
+  /** Cap on waiting for a submitted quantum job to reach a terminal state. */
+  statusPollTimeoutMs?: number
 }
 
 /** Internal pipeline failure carrying a stable error code the job records. */
@@ -1042,30 +1052,96 @@ export class OptimizationJobService {
     if (submission.jobId) {
       await this.persistSubmittedQuantumJob(job, submission)
     }
+
+    // Observe the submission through its own lifecycle first (queued -> running
+    // -> <terminal>) so cancelled/invalid/failed runs are recorded honestly and
+    // only a completed job is pulled through /quantum/result/:id.
+    // `terminalPersisted` guards the catch against writing a second row for a
+    // terminal status that pollQuantumTerminal already persisted.
+    let terminalPersisted = false
     try {
+      if (submission.jobId) {
+        const terminal = await this.pollQuantumTerminal(job, submission)
+        if (terminal.status !== 'completed') {
+          terminalPersisted = true
+          throw new QuantumServiceError(
+            this.terminalQuantumCode(terminal),
+            this.terminalQuantumHttpStatus(terminal),
+            terminal.error?.message ?? `Quantum job '${terminal.jobId}' ended with status '${terminal.status}'`,
+            terminal.error ?? undefined,
+          )
+        }
+      }
+
       const result = await this.quantum.getResult(accepted.executionId)
       if (!submission.jobId && result.jobId) {
         submission.jobId = result.jobId
       }
       return result
     } catch (error) {
-      if (submission.jobId) {
+      if (submission.jobId && !terminalPersisted) {
         await this.persistFailedQuantumJob(job, submission, error)
       }
       throw error
     }
   }
 
+  /**
+   * Poll `GET /quantum/jobs/:id/status` until the submission reaches a terminal
+   * state (completed | failed | cancelled | invalid). Non-completed terminals
+   * are persisted immediately so the honest lifecycle survives the fallback
+   * ladder; a job that never reaches a terminal state within the cap raises
+   * `EXECUTION_TIMEOUT` (the pipeline-level wall clock in runJob still owns the
+   * job-level `timed_out` outcome).
+   */
+  private async pollQuantumTerminal(
+    job: OptimizationJob,
+    submission: NonNullable<PipelineContext['submission']>,
+  ): Promise<QuantumJobStatusDocument> {
+    const pollIntervalMs = this.options.statusPollIntervalMs ?? 250
+    const pollTimeoutMs = this.options.statusPollTimeoutMs ?? 30_000
+    const deadline = Date.now() + pollTimeoutMs
+    for (;;) {
+      const status = await this.quantum.getStatus(submission.jobId!)
+      if (QUANTUM_TERMINAL_STATUSES.has(status.status)) {
+        if (status.status !== 'completed') {
+          await this.persistTerminalQuantumJob(job, submission, status)
+        }
+        return status
+      }
+      if (Date.now() >= deadline) {
+        throw new QuantumServiceError('EXECUTION_TIMEOUT', 504, `Quantum job '${submission.jobId}' did not reach a terminal state within ${pollTimeoutMs}ms`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+    }
+  }
+
+  /** Stable error code for a non-completed terminal lifecycle status. */
+  private terminalQuantumCode(terminal: QuantumJobStatusDocument): string {
+    if (terminal.status === 'cancelled') return 'EXECUTION_CANCELLED'
+    if (terminal.status === 'invalid') return 'INVALID_EXECUTION'
+    return terminal.error?.code ?? 'EXECUTION_FAILED'
+  }
+
+  /** HTTP semantics for a non-completed terminal lifecycle status. */
+  private terminalQuantumHttpStatus(terminal: QuantumJobStatusDocument): number {
+    if (terminal.status === 'invalid') return 422
+    if (terminal.status === 'cancelled') return 409
+    return 500
+  }
+
   // ---------------------------------------------------------------------------
-  // Quantum job persistence (migration 006)
+  // Quantum job persistence (migrations 006 + 009)
   //
   // Records every REAL submission, one honest row per attempt: a `queued` row
   // the moment the quantum service accepts the job, then a `completed` row +
-  // `quantum_results` on success or a `failed` row with the stable error code.
-  // `executionMode`/`backend` are the mode + backend of THAT submission, so the
-  // simulator/hardware distinction survives fallback ladders. No row is ever
-  // invented for an execution the platform did not submit. Persistence is best
-  // effort — a store failure must never take the optimization pipeline down.
+  // `quantum_results` on success or a terminal row (`failed` / `cancelled` /
+  // `invalid`) with the stable error code when the service reports one through
+  // its status surface. `executionMode`/`backend` are the mode + backend of
+  // THAT submission, so the simulator/hardware distinction survives fallback
+  // ladders. No row is ever invented for an execution the platform did not
+  // submit. Persistence is best effort — a store failure must never take the
+  // optimization pipeline down.
   // ---------------------------------------------------------------------------
 
   private async persistSubmittedQuantumJob(
@@ -1175,6 +1251,44 @@ export class OptimizationJobService {
       await repo.saveJob(row)
     } catch (persistError) {
       console.error(`[backend] quantum job persistence failed (fail): ${persistError instanceof Error ? persistError.message : String(persistError)}`)
+    }
+  }
+
+  /**
+   * Persist a non-completed terminal lifecycle status (failed / cancelled /
+   * invalid) reported by `GET /quantum/jobs/:id/status`. Completed outcomes are
+   * persisted by `persistCompletedQuantumJob` (they carry the result row).
+   */
+  private async persistTerminalQuantumJob(
+    job: OptimizationJob,
+    submission: NonNullable<PipelineContext['submission']>,
+    terminal: QuantumJobStatusDocument,
+  ): Promise<void> {
+    const repo = this.options.quantumJobRepo
+    if (!repo || !submission.jobId) return
+    try {
+      const nowIso = new Date().toISOString()
+      const existing = await repo.findJobById(submission.jobId)
+      const row: QuantumJobRecord = {
+        id: submission.jobId,
+        optimizationJobId: job.id,
+        algorithm: 'qaoa',
+        backend: submission.backend,
+        executionMode: submission.mode,
+        qubits: terminal.qubitCount || null,
+        shots: submission.shots,
+        layers: submission.layers,
+        status: terminal.status,
+        submittedAt: existing?.submittedAt ?? nowIso,
+        startedAt: existing?.startedAt ?? terminal.startedAt ?? nowIso,
+        completedAt: terminal.completedAt ?? nowIso,
+        errorCode: terminal.error?.code ?? (terminal.status === 'invalid' ? 'INVALID_EXECUTION_RESULT' : 'EXECUTION_FAILED'),
+        errorMessage: terminal.error?.message ?? null,
+        createdAt: existing?.createdAt ?? nowIso,
+      }
+      await repo.saveJob(row)
+    } catch (persistError) {
+      console.error(`[backend] quantum job persistence failed (${terminal.status}): ${persistError instanceof Error ? persistError.message : String(persistError)}`)
     }
   }
 

@@ -117,6 +117,14 @@ export function OptimizationResult() {
           violationCount={violationCount}
         />
 
+        {summary.fallbackApplied && (
+          <StateBanner
+            kind="stale"
+            title="Execution fallback applied"
+            message={`${summary.fallbackReason ?? 'The configured quantum path did not execute and the pipeline completed through the stored default path.'} The backend and mode chips above report where this job actually ran.`}
+          />
+        )}
+
         {!hasResult && (
           <StateBanner
             kind="empty"

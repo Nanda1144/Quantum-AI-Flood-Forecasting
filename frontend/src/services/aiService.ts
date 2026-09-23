@@ -13,6 +13,7 @@ import type {
   ModelComparisonResult,
   ModelComparisonRow,
   ModelInfo,
+  ModelMetricsHistoryItem,
   RecentPrediction,
   RiskAnalytics,
   AIServiceHealth,
@@ -313,10 +314,13 @@ export interface PaginatedPredictions {
   totalPages: number
 }
 
-/** Listing returned by GET /api/ai/models. */
-export interface ModelsListing {
-  models: ModelInfo[]
-  activeModelId: string | null
+/** Paginated registry response returned by GET /api/ai/models. */
+export interface PaginatedModelRows {
+  items: ModelComparisonRow[]
+  page: number
+  limit: number
+  total: number
+  totalPages: number
 }
 
 /**
@@ -359,9 +363,9 @@ export const aiApi = {
     const qs = params.toString()
     return fetchJson<PaginatedPredictions>(`/api/ai/predictions${qs ? `?${qs}` : ''}`)
   },
-  getModels: () => fetchJson<ModelsListing>('/api/ai/models'),
+  getModels: () => fetchJson<PaginatedModelRows>('/api/ai/models'),
   getModelMetrics: (modelId: string) =>
-    fetchJson<ModelInfo['metrics']>(`/api/ai/models/${encodeURIComponent(modelId)}/metrics`),
+    fetchJson<ModelMetricsHistoryItem[]>(`/api/ai/models/${encodeURIComponent(modelId)}/metrics`),
   getModelsComparison: async (query: ModelComparisonQuery = {}) => {
     const params = new URLSearchParams()
     if (query.sort) params.set('sort', query.sort)
@@ -375,121 +379,14 @@ export const aiApi = {
   },
 }
 
-/* ------------------------------------------------------------------ */
-/* Sample-data fallback for the comparison page. Mirror of the         */
-/* analytics fallback: real backend rows are the primary path; when    */
-/* the backend is unreachable (or rejects the request) and sample data */
-/* is allowed, clearly-labelled local rows keep the page demonstrable. */
-/* ------------------------------------------------------------------ */
-
-function buildMockComparisonResult(): ModelComparisonResult {
-  const items: ModelComparisonRow[] = [
-    {
-      modelId: 'SAMPLE-001',
-      name: 'GRU FloodNet Ensemble',
-      version: 'v1.2',
-      algorithm: 'Gated Recurrent Unit Ensemble',
-      status: 'active',
-      dataset: 'sample://training/panama-basin-2026',
-      artifactReference: 'sample://artifacts/GRU-FloodNet-v1.2',
-      metrics: { rmse: 0.21, mae: 0.16, r2: 0.93, nse: 0.91 },
-      trainingTimeMs: 3600000,
-      inferenceTimeMs: 3,
-      evaluatedAt: hoursAgo(6),
-      evaluationDataset: 'sample://eval/gatun-basin-2026',
-    },
-    {
-      modelId: 'SAMPLE-002',
-      name: 'Deep-Transformer',
-      version: 'v2.0-dev',
-      algorithm: 'Temporal Transformer',
-      status: 'development',
-      dataset: 'sample://training/panama-basin-2026',
-      artifactReference: 'sample://artifacts/Deep-Transformer-v2.0-dev',
-      metrics: { rmse: 0.149, mae: 0.112, r2: 0.979, nse: 0.976 },
-      trainingTimeMs: 5400000,
-      inferenceTimeMs: 1,
-      evaluatedAt: hoursAgo(12),
-      evaluationDataset: 'sample://eval/gatun-basin-2026',
-    },
-    {
-      modelId: 'SAMPLE-003',
-      name: 'XGBoost-Rainfall',
-      version: 'v1.0',
-      algorithm: 'Gradient Boosted Trees',
-      status: 'active',
-      dataset: 'sample://training/gatun-basin-2026',
-      artifactReference: 'sample://artifacts/XGBoost-Rainfall-v1.0',
-      metrics: { rmse: 0.27, mae: 0.21, r2: 0.88, nse: 0.87 },
-      trainingTimeMs: 900000,
-      inferenceTimeMs: 1,
-      evaluatedAt: hoursAgo(48),
-      evaluationDataset: 'sample://eval/gatun-basin-2026',
-    },
-    {
-      modelId: 'SAMPLE-004',
-      name: 'CNN-Rainfall',
-      version: 'v2.1-dev',
-      algorithm: '1D Temporal CNN',
-      status: 'development',
-      dataset: 'sample://training/panama-basin-2026',
-      artifactReference: 'sample://artifacts/CNN-Rainfall-v2.1-dev',
-      metrics: { rmse: 0.441, mae: 0.332, r2: 0.847, nse: 0.847 },
-      trainingTimeMs: 2680000,
-      inferenceTimeMs: 1,
-      evaluatedAt: hoursAgo(24),
-      evaluationDataset: 'sample://eval/panama-basin-2026',
-    },
-    {
-      modelId: 'SAMPLE-005',
-      name: 'LSTM Cascade',
-      version: 'v1.1',
-      algorithm: 'Stacked LSTM',
-      status: 'retired',
-      dataset: 'sample://training/gatun-basin-2026',
-      artifactReference: 'sample://artifacts/LSTM-Cascade-v1.1',
-      metrics: { rmse: 0.38, mae: 0.29, r2: 0.81, nse: 0.8 },
-      trainingTimeMs: 4200000,
-      inferenceTimeMs: 5,
-      evaluatedAt: hoursAgo(120),
-      evaluationDataset: 'sample://eval/gatun-basin-2026',
-    },
-  ]
-  const evaluated = items.map((row) => row.evaluatedAt).filter(Boolean).sort()
-  return {
-    items,
-    evaluatedRange: { from: evaluated[0] ?? null, to: evaluated[evaluated.length - 1] ?? null },
-    evaluationDatasets: [...new Set(items.map((row) => row.evaluationDataset).filter(Boolean))],
-  }
-}
-
-export interface ComparisonLoadResult {
-  result: ModelComparisonResult
-  isMock: boolean
-}
-
 /**
- * Loads model comparison for the given query.
- *
- * Prefers the backend endpoint GET /api/ai/models/comparison. When the backend
- * is unavailable (or rejects the request) and sample data is allowed, falls
- * back to clearly flagged local rows so the page remains demonstrable. Sample
- * rows carry `sample://` lineage and are surfaced to the UI as sample data.
+ * Loads the model comparison for the given query from the backend registry
+ * endpoint GET /api/ai/models/comparison. The comparison page renders exactly
+ * the values returned here: the backend is the only source of metrics, and no
+ * fabricated sample rows are ever substituted.
  */
-export async function loadModelComparison(query: ModelComparisonQuery = {}): Promise<ComparisonLoadResult> {
-  try {
-    const result = await aiApi.getModelsComparison(query)
-    return { result, isMock: false }
-  } catch (error) {
-    // Auth rejections surface instead of swapping to sample rows — access control
-    // must stay real (see loadAIAnalytics).
-    if (shouldAllowMockData() && (error as APIError).code !== 'UNAUTHORIZED') {
-      // Small delay so the loading skeleton is visible and state transitions are observable.
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      return { result: buildMockComparisonResult(), isMock: true }
-    }
-    throw error
-  }
+export async function loadModelComparison(query: ModelComparisonQuery = {}): Promise<ModelComparisonResult> {
+  return aiApi.getModelsComparison(query)
 }
 
 export { fetchJson }

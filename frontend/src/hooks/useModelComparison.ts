@@ -11,7 +11,6 @@ import { loadModelComparison } from '../services/aiService'
 
 export interface ModelComparisonState {
   data: ModelComparisonResult | null
-  isMock: boolean
   loading: boolean
   error: string | null
 }
@@ -20,15 +19,14 @@ export interface ModelComparisonState {
  * Loads the registry-backed model comparison for the current query. Every query
  * change (sort / direction / evaluation window / status) issues a fresh request
  * with the filter applied server-side; when cached rows exist they stay visible
- * while the newer fetch is in flight. When the backend is unavailable the
- * loader returns clearly-labelled sample rows (isMock).
+ * while the newer fetch is in flight. All metrics come from the backend — no
+ * sample rows are substituted.
  */
 export function useModelComparison() {
   const [query, setQuery] = useState<ModelComparisonQuery>({})
   const [refreshKey, setRefreshKey] = useState(0)
   const [state, setState] = useState<ModelComparisonState>({
     data: null,
-    isMock: false,
     loading: true,
     error: null,
   })
@@ -37,9 +35,9 @@ export function useModelComparison() {
   const load = useCallback(async (q: ModelComparisonQuery) => {
     const id = ++requestId.current
     try {
-      const { result, isMock } = await loadModelComparison(q)
+      const result = await loadModelComparison(q)
       if (requestId.current !== id) return
-      setState({ data: result, isMock, loading: false, error: null })
+      setState({ data: result, loading: false, error: null })
     } catch (error) {
       if (requestId.current !== id) return
       const message = error instanceof Error ? error.message : 'Failed to load model comparison'

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 
+from . import __version__
+
 
 def _bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, "true" if default else "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -25,7 +27,9 @@ def _int(name: str, default: int) -> int:
 
 
 SERVICE_NAME = "quantum-service"
-SERVICE_VERSION = "1.0.0"
+# Single source of truth: the package version (app/__init__.py). The /health
+# endpoint (`config.SERVICE_VERSION`) and FastAPI's `version=` must never drift.
+SERVICE_VERSION = __version__
 
 HOST = os.environ.get("QUANTUM_SERVICE_HOST", "0.0.0.0")
 PORT = _int("QUANTUM_SERVICE_PORT", 8100)

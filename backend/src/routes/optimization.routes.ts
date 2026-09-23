@@ -5,7 +5,7 @@
  * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
-import { Router } from 'express'
+import { Router, type RequestHandler } from 'express'
 import { z } from 'zod'
 import type { Container } from '../container.ts'
 import { AppError, ErrorCodes, success } from '../envelope.ts'
@@ -38,6 +38,38 @@ import type {
   RunOptimizationRequest,
   StepStatus,
 } from '../types/optimization.ts'
+
+/**
+ * Shared handler for the filterable benchmark ledger (newest first). Used by
+ * both `GET /api/optimization/benchmarks` and the external alias
+ * `GET /api/benchmarks`. Completed jobs with a stored result only — the list is
+ * built from persisted measurements, never recomputed or fabricated.
+ */
+function benchmarkListHandler(c: Container): RequestHandler {
+  return async (req, res, next) => {
+    try {
+      const query = req.validated!.query as z.infer<typeof benchmarkListQuerySchema>
+      const filters: BenchmarkListFilters = {
+        ...(query.problem_type !== undefined && { problemType: query.problem_type }),
+        ...(query.algorithm !== undefined && { algorithm: query.algorithm }),
+        ...(query.execution_mode !== undefined && { executionMode: query.execution_mode }),
+        ...(query.from !== undefined && { from: query.from }),
+        ...(query.to !== undefined && { to: query.to }),
+      }
+      res.json(success(await c.optimizationJobs.listBenchmarksForPrincipal(filters, req.principal!)))
+    } catch (error) {
+      next(error)
+    }
+  }
+}
+
+/** Standalone benchmark ledger route (external contract: `GET /api/benchmarks`). */
+export function benchmarkSummaryRouter(c: Container): Router {
+  const router = Router()
+  router.use(authenticate(c.auth, config.AUTH_ENABLED))
+  router.get('/api/benchmarks', authorize('viewer'), validate({ query: benchmarkListQuerySchema }), benchmarkListHandler(c))
+  return router
+}
 
 /**
  * Optimization orchestration API — the Nanda command surface.
@@ -285,21 +317,7 @@ export function optimizationRoutes(c: Container): Router {
   })
 
   /** GET /api/optimization/benchmarks — filterable benchmark ledger (newest first). */
-  router.get('/benchmarks', authorize('viewer'), validate({ query: benchmarkListQuerySchema }), async (req, res, next) => {
-    try {
-      const query = req.validated!.query as z.infer<typeof benchmarkListQuerySchema>
-      const filters: BenchmarkListFilters = {
-        ...(query.problem_type !== undefined && { problemType: query.problem_type }),
-        ...(query.algorithm !== undefined && { algorithm: query.algorithm }),
-        ...(query.execution_mode !== undefined && { executionMode: query.execution_mode }),
-        ...(query.from !== undefined && { from: query.from }),
-        ...(query.to !== undefined && { to: query.to }),
-      }
-      res.json(success(await c.optimizationJobs.listBenchmarksForPrincipal(filters, req.principal!)))
-    } catch (error) {
-      next(error)
-    }
-  })
+  router.get('/benchmarks', authorize('viewer'), validate({ query: benchmarkListQuerySchema }), benchmarkListHandler(c))
 
   /**
    * GET /api/optimization/:id/result — final result read model: selected

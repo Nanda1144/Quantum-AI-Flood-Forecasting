@@ -83,6 +83,8 @@ describe('quantum job persistence (migration 006)', () => {
     quantum.resultErrorFor = () => null
     quantum.resultOverrides = {}
     quantum.jobIdFromOptimize = true
+    quantum.statusSequence = []
+    quantum.statusHang = false
     quantum.resetQuantumPersistence()
     quantumRepo.deleteAll()
   })
@@ -183,6 +185,48 @@ describe('quantum job persistence (migration 006)', () => {
 
     const rows = await quantumRepo.findJobsByOptimizationJobId(job.id)
     assert.equal(rows.length, 0, 'optimize-level failure means the platform never submitted a quantum job')
+  })
+
+  it('persists a cancelled row (EXECUTION_CANCELLED) when the service cancels a running job', async () => {
+    quantum.statusSequence = ['cancelled']
+    const job = await run(makeRunRequest(), service({ fallbackPolicy: 'error' }))
+    assert.equal(job.status, 'failed')
+    assert.equal(job.error!.code, 'QAOA_EXECUTION_FAILED')
+
+    const rows = await quantumRepo.findJobsByOptimizationJobId(job.id)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].status, 'cancelled')
+    assert.equal(rows[0].errorCode, 'EXECUTION_CANCELLED')
+    assert.ok(rows[0].errorMessage)
+    assert.ok(rows[0].startedAt)
+    assert.ok(rows[0].completedAt)
+    assert.equal(await quantumRepo.findResult('jb-1'), null, 'a cancelled job never persists a result row')
+  })
+
+  it('persists an invalid row (INVALID_EXECUTION_RESULT) for an invalid binary result', async () => {
+    quantum.statusSequence = ['invalid']
+    const job = await run(makeRunRequest(), service({ fallbackPolicy: 'error' }))
+    assert.equal(job.status, 'failed')
+
+    const rows = await quantumRepo.findJobsByOptimizationJobId(job.id)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].status, 'invalid')
+    assert.equal(rows[0].errorCode, 'INVALID_EXECUTION_RESULT')
+    assert.ok(rows[0].completedAt)
+    assert.equal(await quantumRepo.findResult('jb-1'), null, 'invalid jobs never persist a result row')
+  })
+
+  it('polls queued → running → completed before reading the result (polling stops at terminal)', async () => {
+    quantum.statusSequence = ['running', 'running', 'completed']
+    const job = await run(makeRunRequest(), service({ statusPollIntervalMs: 1 }))
+    assert.equal(job.status, 'completed')
+    assert.ok(quantum.getStatusCalls >= 3, 'the orchestrator traces the transient lifecycle, not just the end state')
+    assert.equal(quantum.getStatusCalls, 3, 'polling stops the moment the job reaches a terminal state')
+
+    const rows = await quantumRepo.findJobsByOptimizationJobId(job.id)
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].status, 'completed')
+    assert.ok(await quantumRepo.findResult('jb-1'))
   })
 
   it('never lets a persistence store failure take the pipeline down', async () => {

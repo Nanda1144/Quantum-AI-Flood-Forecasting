@@ -345,3 +345,97 @@ test('migrations are reversible (006 down/up round-trips harmlessly)', async (t)
     await runSql('ROLLBACK')
   }
 })
+
+// ────────────────────────────────────────────────────────────────────────────
+// 009_quantum_job_invalid_status — `invalid` joins the terminal lifecycle set.
+// ────────────────────────────────────────────────────────────────────────────
+
+test('009: quantum_jobs accepts the invalid terminal status and persists its error pair', async (t) => {
+  if (!available) return t.skip(skipReason)
+  await runSql('BEGIN')
+  try {
+    await runSql(INSERT_COMPLETED_JOB('QOP-QJT-0100'))
+    await runSql(
+      `INSERT INTO quantum_jobs
+         (id, optimization_job_id, algorithm, backend, execution_mode, qubits, shots, layers, status, submitted_at, started_at, completed_at, error_code, error_message)
+       VALUES ('QJ-QJT-0100001', 'QOP-QJT-0100', 'qaoa', 'qflare_simulator_statevector', 'simulator', 6, 1024, 2, 'invalid',
+               '2026-09-16T09:00:00Z', '2026-09-16T09:00:00Z', '2026-09-16T09:00:01Z', 'INVALID_EXECUTION_RESULT', 'invalid binary result')`,
+    )
+    const row = await runSql(
+      `SELECT status, error_code, error_message FROM quantum_jobs WHERE id = 'QJ-QJT-0100001'`,
+    )
+    assert.equal(row.rows[0].status, 'invalid')
+    assert.equal(row.rows[0].error_code, 'INVALID_EXECUTION_RESULT')
+    assert.equal(row.rows[0].error_message, 'invalid binary result')
+  } finally {
+    await runSql('ROLLBACK')
+  }
+})
+
+test('009: an invalid job never carries a quantum_results row (result relationship intact)', async (t) => {
+  if (!available) return t.skip(skipReason)
+  await runSql('BEGIN')
+  try {
+    await runSql(INSERT_COMPLETED_JOB('QOP-QJT-0101'))
+    await runSql(
+      `INSERT INTO quantum_jobs
+         (id, optimization_job_id, algorithm, backend, execution_mode, qubits, shots, layers, status)
+       VALUES ('QJ-QJT-0101001', 'QOP-QJT-0101', 'qaoa', 'qflare_simulator_statevector', 'simulator', 6, 1024, 2, 'invalid')`,
+    )
+    await expectPgError(
+      `INSERT INTO quantum_results (id, quantum_job_id, bitstring, counts)
+       VALUES ('QJ-QJT-0101001-R1', 'QJ-QJT-0101001', '101010', '{"101010":1}'::jsonb)`,
+      [],
+      '23514',
+    )
+  } finally {
+    await runSql('ROLLBACK')
+  }
+})
+
+test('009: unknown statuses are still rejected after the CHECK is widened', async (t) => {
+  if (!available) return t.skip(skipReason)
+  await runSql('BEGIN')
+  try {
+    await runSql(INSERT_COMPLETED_JOB('QOP-QJT-0102'))
+    await expectPgError(
+      `INSERT INTO quantum_jobs
+         (id, optimization_job_id, algorithm, backend, execution_mode, shots, layers, status)
+       VALUES ('QJ-QJT-0102001', 'QOP-QJT-0102', 'qaoa', 'qflare_simulator_statevector', 'simulator', 1024, 2, 'exploded')`,
+      [],
+      '23514',
+      'chk_quantum_jobs_status',
+    )
+  } finally {
+    await runSql('ROLLBACK')
+  }
+})
+
+test('migrations are reversible (009 down/up round-trips harmlessly)', async (t) => {
+  if (!available) return t.skip(skipReason)
+  await runSql('BEGIN')
+  try {
+    await runSql(INSERT_COMPLETED_JOB('QOP-QJT-0103'))
+    await runSql(readMigration('009_quantum_job_invalid_status', 'down'))
+    await expectPgError(
+      `INSERT INTO quantum_jobs
+         (id, optimization_job_id, algorithm, backend, execution_mode, shots, layers, status)
+       VALUES ('QJ-QJT-0103001', 'QOP-QJT-0103', 'qaoa', 'qflare_simulator_statevector', 'simulator', 1024, 2, 'invalid')`,
+      [],
+      '23514',
+      'chk_quantum_jobs_status',
+    )
+    await runSql(readMigration('009_quantum_job_invalid_status', 'up'))
+    const roundTrip = await runSql(
+      `SELECT count(*)::int AS n FROM pg_constraint WHERE conname = 'chk_quantum_jobs_status'`,
+    )
+    assert.equal(roundTrip.rows[0].n, 1, '009 up should recreate the widened status CHECK')
+    await runSql(
+      `INSERT INTO quantum_jobs
+         (id, optimization_job_id, algorithm, backend, execution_mode, shots, layers, status)
+       VALUES ('QJ-QJT-0103001', 'QOP-QJT-0103', 'qaoa', 'qflare_simulator_statevector', 'simulator', 1024, 2, 'invalid')`,
+    )
+  } finally {
+    await runSql('ROLLBACK')
+  }
+})

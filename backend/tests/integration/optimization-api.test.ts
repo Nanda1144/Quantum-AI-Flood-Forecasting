@@ -195,6 +195,15 @@ describe('integration: optimization orchestration API', () => {
         .expect(404)
     })
 
+    it('scopes the QUBO visualization endpoint to the owner (404 for a foreign viewer)', async () => {
+      const jobId = await runAndAwait()
+      const res = await request(app)
+        .get(`/api/optimization/jobs/${jobId}/qubo`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(404)
+      assert.equal(res.body.error.code, 'JOB_NOT_FOUND')
+    })
+
     it('404s unknown job ids', async () => {
       const res = await request(app)
         .get('/api/optimization/QOP-DOES-NOT-EXIST')
@@ -350,6 +359,23 @@ describe('integration: optimization orchestration API', () => {
       assert.equal(qubo.penaltyScale, qubo.summary.penaltyStrength)
 
       await artifactContainer.forecastRepo.deleteAll()
+    })
+
+    it('reports a malformed stored matrix as unavailable/invalid instead of serving it', async () => {
+      const jobId = await runAndAwait()
+      const job = await container.jobRepo.findById(jobId)
+      assert.ok(job)
+      assert.ok(job.qubo, 'inline build must be stored on the job')
+      job.qubo.doc.matrix[0].push(999)
+      await container.jobRepo.save(job)
+
+      const res = await request(app)
+        .get(`/api/optimization/jobs/${jobId}/qubo`)
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200)
+      const qubo = res.body.data
+      assert.equal(qubo.available, 'invalid')
+      assert.equal(qubo.jobId, jobId)
     })
 
     it('serves the persisted classical reference', async () => {
@@ -622,6 +648,35 @@ describe('integration: optimization orchestration API', () => {
 
       const none = await request(app)
         .get('/api/optimization/benchmarks')
+        .query({ execution_mode: 'ibm_hardware' })
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200)
+      assert.equal(none.body.data.length, 0)
+    })
+
+    it('GET /api/benchmarks exposes the same filtered ledger (external alias)', async () => {
+      const jobId = await runAndAwait()
+      const rows = await request(app)
+        .get('/api/benchmarks')
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200)
+      const hits = rows.body.data.filter((row: { jobId: string }) => row.jobId === jobId)
+      assert.equal(hits.length, 1)
+      assert.equal(hits[0].problemType, 'sensor_placement')
+      assert.equal(hits[0].algorithm, 'qaoa')
+      assert.equal(hits[0].classical.optimal, true)
+      assert.equal(hits[0].validated, true)
+      assert.ok(typeof hits[0].approximationRatio.value === 'number')
+
+      const filtered = await request(app)
+        .get('/api/benchmarks')
+        .query({ problem_type: 'sensor_placement', algorithm: 'qaoa', execution_mode: 'simulator' })
+        .set('Authorization', `Bearer ${operatorToken}`)
+        .expect(200)
+      assert.ok(filtered.body.data.some((row: { jobId: string }) => row.jobId === jobId))
+
+      const none = await request(app)
+        .get('/api/benchmarks')
         .query({ execution_mode: 'ibm_hardware' })
         .set('Authorization', `Bearer ${operatorToken}`)
         .expect(200)

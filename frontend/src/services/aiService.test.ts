@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
 import { loadAIAnalytics, loadModelComparison, shouldAllowMockData } from './aiService'
-import { buildSnapshot } from '../test/fixtures'
+import { buildComparisonResult, buildComparisonRows, buildSnapshot } from '../test/fixtures'
 
 function okResponse(data: unknown): Response {
   return {
@@ -100,5 +100,38 @@ describe('loadModelComparison', () => {
     fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 } as unknown as Response)
 
     await expect(loadModelComparison({})).rejects.toMatchObject({ code: 'UNAUTHORIZED' })
+  })
+
+  it('returns the registry rows straight from the backend (no wrapper, no mock)', async () => {
+    const rows = [
+      buildComparisonRows({ name: 'QEnhanced-LSTM', status: 'development', metrics: { rmse: 0.14, mae: 0.1, r2: 0.97 }, inferenceTimeMs: 10, evaluatedAt: '2026-09-10T10:00:00.000Z' }),
+      buildComparisonRows({ name: 'Deep-Transformer', metrics: { rmse: 0.17, mae: 0.13, r2: 0.97 }, inferenceTimeMs: 4, evaluatedAt: '2026-08-21T10:00:00.000Z' }),
+    ]
+    fetchSpy.mockResolvedValueOnce(okResponse(buildComparisonResult(rows)))
+
+    const result = await loadModelComparison({ sort: 'rmse', direction: 'asc' })
+
+    expect(result.items).toHaveLength(2)
+    expect(result.items[0].name).toBe('QEnhanced-LSTM')
+    expect(result.items[0].metrics.mae).toBe(0.1)
+    expect(result.evaluatedRange.to).toBe('2026-09-10T10:00:00.000Z')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/ai/models/comparison?sort=rmse&direction=asc',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('rejects with the server error instead of substituting sample rows, whatever the mock flag', async () => {
+    vi.stubEnv('VITE_USE_MOCK_DATA', 'true')
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: async () => ({ success: false, error: { code: 'SERVICE_UNAVAILABLE', message: 'registry down' } }),
+    } as unknown as Response)
+
+    await expect(loadModelComparison({})).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'registry down',
+    })
   })
 })

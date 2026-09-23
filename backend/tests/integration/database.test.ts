@@ -326,6 +326,7 @@ test('query performance: dashboard retrieval stays fast on populated tables', as
       'idx_model_versions_status',
       'idx_model_metrics_version',
       'idx_model_metrics_evaluated_at',
+      'idx_model_metrics_version_evaluated_at',
     ]) {
       assert.ok(names.has(expected), `missing index ${expected}`)
     }

@@ -7,17 +7,18 @@
 
 /**
  * The exact experiment configuration for the selected run — every row comes
- * from the stored result document or the job summary. The RNG seed is honestly
- * reported as not recorded by the gateway rather than a plausible-looking value.
+ * from the stored benchmark document (the pipeline's write-once snapshot). The
+ * RNG seed is honestly reported as recorded (when the pipeline stored it) or
+ * as not recorded, never as a plausible-looking value.
  */
 
 import { CalendarRange, Cpu, Layers, Settings2, SlidersHorizontal, Timer, type LucideIcon } from 'lucide-react'
-import type { OptimizationResult, QuantumJobSummary } from '../../types/optimization'
-import { formatDateTime, formatDuration } from '../../lib/format'
+import type { BenchmarkDocument } from '../../types/benchmark'
+import { quantumRuntimeLabel } from '../../lib/benchmark'
+import { formatDateTime } from '../../lib/format'
 
 interface ExperimentConfigProps {
-  summary: QuantumJobSummary
-  result: OptimizationResult
+  document: BenchmarkDocument
 }
 
 interface ConfigRow {
@@ -27,58 +28,70 @@ interface ConfigRow {
   hint?: string
 }
 
-export function ExperimentConfig({ summary, result }: ExperimentConfigProps) {
+export function ExperimentConfig({ document }: ExperimentConfigProps) {
+  const repro = document.reproducibility
+  const seed = repro.seed
+  const seedNote =
+    seed !== null
+      ? 'Stored QAOA RNG seed as captured by the pipeline (reproducibility snapshot).'
+      : 'The gateway did not capture an RNG seed for this run — reported honestly rather than invented.'
+
   const rows: ConfigRow[] = [
     {
       icon: Settings2,
       label: 'Problem type',
-      value: summary.problemType.replace('_', ' '),
+      value: repro.problem.type.replace('_', ' '),
       hint: 'Instance class configured before the run',
     },
     {
       icon: SlidersHorizontal,
       label: 'Number of variables',
-      value: String(summary.variablesCount ?? result.qubits ?? '—'),
+      value: String(document.problem.size.variables),
       hint: 'QUBO binary variables; identical for both solvers',
     },
     {
       icon: Cpu,
       label: 'Classical solver',
-      value: result.classicalComparison.method || '—',
+      value: document.classical.method,
       hint: 'Persisted classical reference solver',
     },
     {
       icon: SlidersHorizontal,
       label: 'QAOA layers (p)',
-      value: String(result.layers),
+      value: String(document.quantum.layers),
     },
     {
       icon: SlidersHorizontal,
       label: 'Shots',
-      value: String(result.shots),
+      value: String(document.quantum.shots),
     },
     {
       icon: Cpu,
       label: 'Backend',
-      value: result.backend,
-      hint: result.simulated ? 'Simulator execution' : 'Hardware execution',
+      value: document.quantum.backend,
+      hint:
+        document.quantum.simulated === true
+          ? 'Simulator execution'
+          : document.quantum.simulated === false
+            ? 'Non-simulator execution'
+            : 'Execution detail not persisted',
     },
     {
       icon: Layers,
       label: 'Seed',
-      value: 'Not recorded',
-      hint: 'The gateway does not persist the RNG seed for QAOA sampling.',
+      value: seed !== null ? String(seed) : 'Not recorded',
+      hint: seedNote,
     },
     {
       icon: CalendarRange,
       label: 'Experiment timestamp',
-      value: formatDateTime(summary.createdAt),
+      value: formatDateTime(document.completedAt),
     },
     {
       icon: Timer,
       label: 'Wall time',
-      value: formatDuration(result.executionTimeMs),
-      hint: 'Stored QAOA wall time for this run',
+      value: quantumRuntimeLabel(document),
+      hint: 'Stored QAOA executor wall time; pipeline total when not persisted',
     },
   ]
 

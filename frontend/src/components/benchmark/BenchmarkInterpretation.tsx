@@ -14,12 +14,11 @@
  */
 
 import { AlertTriangle, CheckCircle2, MinusCircle, Scale, Server, ShieldCheck } from 'lucide-react'
-import type { OptimizationResult, QuantumJobSummary } from '../../types/optimization'
+import type { BenchmarkDocument } from '../../types/benchmark'
 import { interpretBenchmark, type BenchmarkInterpretation, type BenchmarkVerdict } from '../../lib/benchmark'
 
 interface BenchmarkInterpretationProps {
-  summary: QuantumJobSummary
-  result: OptimizationResult
+  document: BenchmarkDocument
 }
 
 const TONES: Record<BenchmarkInterpretation['tone'], { wrap: string; icon: string; title: string; text: string }> = {
@@ -58,8 +57,8 @@ const VERDICT_ICON: Record<BenchmarkVerdict, typeof Scale> = {
   classical_better: MinusCircle,
 }
 
-export function BenchmarkInterpretation({ summary, result }: BenchmarkInterpretationProps) {
-  const insight = interpretBenchmark(summary, result)
+export function BenchmarkInterpretation({ document }: BenchmarkInterpretationProps) {
+  const insight = interpretBenchmark(document)
   const tone = TONES[insight.tone]
   const Icon = VERDICT_ICON[insight.verdict]
 

@@ -136,7 +136,7 @@ export function useQuantumOptimization(initial?: InitialQuantumState) {
       riskProfile: config.riskProfile,
     })
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.candidateCount, config.forecastReference])
+  }, [config.candidateCount, config.forecastReference, config.riskProfile])
 
   const updateConfig = useCallback((patch: Partial<QuantumConfig>) => {
     setConfig((prev) => ({ ...prev, ...patch }))
@@ -164,7 +164,7 @@ export function useQuantumOptimization(initial?: InitialQuantumState) {
       budgetK: config.budgetK,
       forecastReference: config.forecastReference,
       riskProfile: config.riskProfile,
-      executionMode: config.hardwareEnabled ? 'hardware' : 'simulator',
+      executionMode: config.executionMode,
       hardwareEnabled: config.hardwareEnabled,
       backend: config.backend,
       shots: config.shots,
@@ -230,6 +230,14 @@ export function useQuantumOptimization(initial?: InitialQuantumState) {
 
   const problem = useMemo(() => PROBLEM_TYPES[config.problemType], [config.problemType])
 
+  const minCandidateCostK = useMemo(() => {
+    const costs = inputs?.candidates
+      .map((site) => site.sensorCostK)
+      .filter((value) => Number.isFinite(value) && value >= 0)
+    if (!costs || costs.length === 0) return null
+    return Math.min(...costs)
+  }, [inputs?.candidates])
+
   return {
     config,
     updateConfig,
@@ -243,6 +251,7 @@ export function useQuantumOptimization(initial?: InitialQuantumState) {
     removeCoverageRequirement,
     inputs,
     inputsLoading,
+    minCandidateCostK,
     adapterMode,
     runState,
     runError,

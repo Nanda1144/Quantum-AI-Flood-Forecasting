@@ -63,6 +63,9 @@ describe('OptimizationJobService orchestration', () => {
     quantum.quboError = null
     quantum.optimizeErrorFor = () => null
     quantum.resultOverrides = {}
+    quantum.statusSequence = []
+    quantum.statusHang = false
+    quantum.resetQuantumPersistence()
   })
 
   async function run(request: ReturnType<typeof makeRunRequest>, svc = service()): Promise<OptimizationJob> {
@@ -311,6 +314,19 @@ describe('OptimizationJobService orchestration', () => {
     assert.equal(result.quantumAdvantageClaimed, false)
     assert.match(result.benchmarkDisclaimer ?? '', /No quantum speedup/)
     assert.ok(job.classical!.selectedCount >= 1)
+  })
+
+  it('polls the quantum job status once and stops as soon as it is terminal', async () => {
+    const job = await run(makeRunRequest())
+    assert.equal(job.status, 'completed')
+    assert.equal(quantum.getStatusCalls, 1, 'a completed job is observed exactly once, then the result is read')
+  })
+
+  it('breaks with timed_out when the quantum status never reaches a terminal state', async () => {
+    quantum.statusHang = true // getStatus() never resolves — the wall clock owns the outcome
+    const job = await run(makeRunRequest(), service({ executionTimeoutMs: 100, statusPollTimeoutMs: 30_000 }))
+    assert.equal(job.status, 'timed_out')
+    assert.equal(job.error!.code, 'EXECUTION_TIMEOUT')
   })
 
   // Ownership periphery ─────────────────────────────────────────────────────

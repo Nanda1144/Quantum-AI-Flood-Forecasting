@@ -31,6 +31,7 @@ import type {
   QuboFormulation,
   QuantumJobSummary,
 } from '../../types/optimization'
+import type { BenchmarkDocument, BenchmarkListEntry } from '../../types/benchmark'
 import { authHeaders, notifyUnauthorized } from '../authService'
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -145,4 +146,24 @@ export async function fetchOptimizationInputs(candidateCount: number): Promise<O
  */
 export async function fetchOptimizationExport(jobId: string): Promise<OptimizationExportDocument> {
   return fetchOpt<OptimizationExportDocument>(`/api/optimization/jobs/${encodeURIComponent(jobId)}/export`)
+}
+
+/**
+ * Filterable benchmark ledger — completed runs with a stored result, newest
+ * first, served by the gateway's benchmark endpoint. This is the ONLY ledger
+ * source for the Quantum vs Classical Benchmark page: the rows carry the
+ * stored classical/quantum measurements and the approximation ratio verbatim.
+ */
+export async function fetchBenchmarkLedger(): Promise<BenchmarkListEntry[]> {
+  return fetchOpt<BenchmarkListEntry[]>('/api/optimization/benchmarks')
+}
+
+/**
+ * Full benchmark document for one experiment — the raw, stored measurements
+ * the backend assembled from the persisted run (objective, runtime, constraint
+ * violations, approximation ratio + basis, seed, experiment configuration).
+ * Never re-executed: it is the same write-once snapshot the pipeline persisted.
+ */
+export async function fetchBenchmarkDocument(jobId: string): Promise<BenchmarkDocument> {
+  return fetchOpt<BenchmarkDocument>(`/api/optimization/${encodeURIComponent(jobId)}/benchmark`)
 }

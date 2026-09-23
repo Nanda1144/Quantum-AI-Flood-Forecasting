@@ -25,7 +25,7 @@
  * that execution carries the same id, which the persistence tests rely on.
  */
 
-import { QuantumServiceError, type CreateQuboInput, type OptimizeQaoaInput, type OptimizeAccepted, type QuantumExecutionResult, type QuantumServiceClient, type QuboCreated } from '../../src/clients/quantum-service.client.ts'
+import { QuantumServiceError, type CreateQuboInput, type OptimizeQaoaInput, type OptimizeAccepted, type QuantumExecutionResult, type QuantumJobStatusDocument, type QuantumLifecycleStatus, type QuantumServiceClient, type QuboCreated } from '../../src/clients/quantum-service.client.ts'
 import { buildQubo, greedyDecode } from '../../src/lib/optimization/qubo.ts'
 import type { CandidateLocation, QuantumBackend, QuantumExecutionMode, RunOptimizationRequest } from '../../src/types/optimization.ts'
 
@@ -39,9 +39,18 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
   /** When false, optimize() returns no jobId and getResult() supplies it. */
   jobIdFromOptimize = true
   resultOverrides: Partial<Omit<QuantumExecutionResult, 'executionId' | 'quboId' | 'algorithm' | 'status' | 'jobId'>> = {}
+  /**
+   * Lifecycle statuses to serve from getStatus(), one per call (shifted FIFO).
+   * When empty, the first getStatus() reports `completed` (success) or `failed`
+   * (when resultErrorFor matches), mirroring a service that already finished.
+   */
+  statusSequence: QuantumLifecycleStatus[] = []
+  /** When true, getStatus() never resolves — the runJob wall clock owns timeout. */
+  statusHang = false
 
   createQuboCalls = 0
   optimizeCalls: OptimizeQaoaInput[] = []
+  getStatusCalls = 0
 
   private quboInput: CreateQuboInput | null = null
   private optimizeInput: OptimizeQaoaInput | null = null
@@ -66,6 +75,56 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
     const jobId = `jb-${this.optimizeCalls.length}`
     this.jobIds.set(executionId, jobId)
     return this.jobIdFromOptimize ? { executionId, jobId } : { executionId }
+  }
+
+  async getStatus(jobId: string): Promise<QuantumJobStatusDocument> {
+    this.getStatusCalls += 1
+    if (this.statusHang) return new Promise<never>(() => {})
+    const mode = this.optimizeInput?.mode ?? 'simulator'
+    const backend = this.optimizeInput?.backend ?? 'qflare_simulator_statevector'
+    const timestamp = '2026-09-16T09:00:00.000Z'
+    const statusDocument = (
+      status: QuantumLifecycleStatus,
+      error: { code: string; message: string } | null,
+    ): QuantumJobStatusDocument => ({
+      jobId,
+      status,
+      algorithm: 'qaoa',
+      modeRequested: mode,
+      modeUsed: mode,
+      backendRequested: backend,
+      backendUsed: backend,
+      qubitCount: this.quboInput?.candidates.length ?? 0,
+      shotCount: this.optimizeInput?.shots ?? 1024,
+      layers: this.optimizeInput?.layers ?? 2,
+      submittedAt: timestamp,
+      startedAt: status === 'queued' ? null : timestamp,
+      completedAt: status === 'queued' || status === 'running' ? null : timestamp,
+      cancellable: status === 'queued' || status === 'running',
+      cancelRequested: false,
+      error,
+    })
+
+    const override = this.statusSequence.shift()
+    if (override !== undefined) {
+      return statusDocument(
+        override,
+        override === 'completed'
+          ? null
+          : {
+              code: override === 'invalid' ? 'INVALID_EXECUTION_RESULT' : override === 'cancelled' ? 'EXECUTION_CANCELLED' : 'AER_EXECUTION_FAILED',
+              message: `quantum service reported lifecycle status '${override}'`,
+            },
+      )
+    }
+    const failure = this.resultErrorFor(mode, backend)
+    if (failure) {
+      return statusDocument('failed', {
+        code: failure instanceof QuantumServiceError ? failure.code : 'EXECUTION_FAILED',
+        message: failure.message,
+      })
+    }
+    return statusDocument('completed', null)
   }
 
   async getResult(executionId: string): Promise<QuantumExecutionResult> {
@@ -126,6 +185,7 @@ export class FakeQuantumServiceClient implements QuantumServiceClient {
     this.jobIds.clear()
     this.createQuboCalls = 0
     this.optimizeCalls = []
+    this.getStatusCalls = 0
     this.quboInput = null
     this.optimizeInput = null
   }

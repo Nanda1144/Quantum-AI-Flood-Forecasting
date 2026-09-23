@@ -381,6 +381,79 @@ describe('integration: API', () => {
       assert.deepEqual(names, ['QEnhanced-LSTM', 'Unscored'])
     })
 
+    it('filters by evaluation start (from) only', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?from=2026-09-01T00:00:00.000Z')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const names = res.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(names, ['QEnhanced-LSTM'])
+    })
+
+    it('filters by evaluation end (to) only', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?to=2026-08-31T23:59:59.999Z')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const names = res.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(names, ['Deep-Transformer', 'GRU-FloodNet'])
+    })
+
+    it('filters by a closed evaluation window', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?from=2026-08-10T00:00:00.000Z&to=2026-08-15T23:59:59.999Z')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const names = res.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(names, ['GRU-FloodNet'])
+    })
+
+    it('sorts by name ascending by default', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?sort=name&direction=asc')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const names = res.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(names, ['Deep-Transformer', 'GRU-FloodNet', 'QEnhanced-LSTM', 'Unscored'])
+    })
+
+    it('sorts by inference time ascending by default', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?sort=inferenceTime')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const items = res.body.data.items as { name: string; inferenceTimeMs?: number | null }[]
+      assert.deepEqual(items.map((item) => item.name), ['Deep-Transformer', 'GRU-FloodNet', 'QEnhanced-LSTM', 'Unscored'])
+      assert.equal(items[0].inferenceTimeMs, 4)
+    })
+
+    it('sorts by r2 descending by default and honours an explicit ascending direction', async () => {
+      const desc = await request(compApp)
+        .get('/api/ai/models/comparison?sort=r2')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const descNames = desc.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(descNames, ['Deep-Transformer', 'QEnhanced-LSTM', 'GRU-FloodNet', 'Unscored'])
+
+      const asc = await request(compApp)
+        .get('/api/ai/models/comparison?sort=r2&direction=asc')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const ascNames = asc.body.data.items.map((item: { name: string }) => item.name)
+      assert.equal(ascNames[0], 'GRU-FloodNet')
+      assert.deepEqual(ascNames.slice(1, 3).sort(), ['Deep-Transformer', 'QEnhanced-LSTM'])
+      assert.equal(ascNames[3], 'Unscored')
+    })
+
+    it('sorts by MAE ascending (lower is better)', async () => {
+      const res = await request(compApp)
+        .get('/api/ai/models/comparison?sort=mae&direction=asc')
+        .set('Authorization', `Bearer ${await adminToken()}`)
+        .expect(200)
+      const names = res.body.data.items.map((item: { name: string }) => item.name)
+      assert.deepEqual(names, ['QEnhanced-LSTM', 'Deep-Transformer', 'GRU-FloodNet', 'Unscored'])
+    })
+
     it('rejects an unknown sort key with 422', async () => {
       await request(compApp)
         .get('/api/ai/models/comparison?sort=f1')

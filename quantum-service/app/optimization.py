@@ -121,7 +121,7 @@ def build_qubo(
         "variable_count": n,
         "variables": variable_names,
         "expression": expression,
-        "matrix": [quadratic[i] + [linear[i]] for i in range(n)],
+        "matrix": [quadratic[i] + list(linear) for i in range(n)],
         "offset": round(offset, 3),
         "_linear": linear,
         "_quadratic": quadratic,

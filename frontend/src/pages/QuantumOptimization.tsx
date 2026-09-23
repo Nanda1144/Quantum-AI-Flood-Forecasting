@@ -41,9 +41,17 @@ export function QuantumOptimization() {
   })
 
   const anyWeight = Object.values(q.weights).some((value) => value > 0)
+  const budgetBlocked =
+    q.config.budgetK !== null &&
+    q.minCandidateCostK !== null &&
+    q.config.budgetK < q.minCandidateCostK
+  const budgetNote = budgetBlocked
+    ? `Budget $${q.config.budgetK}k is below the cheapest candidate site cost ($${Math.ceil(q.minCandidateCostK ?? 0)}k) — raise the budget or clear it to run.`
+    : null
   const canRun =
     q.runState !== 'running' &&
     anyWeight &&
+    !budgetBlocked &&
     q.config.maxSensors > 0 &&
     q.config.maxSensors <= q.config.candidateCount
 
@@ -98,6 +106,7 @@ export function QuantumOptimization() {
                 runState={q.runState}
                 canRun={canRun}
                 runError={q.runError}
+                runNote={budgetNote}
                 onRun={q.startRun}
                 onCancel={q.cancelRun}
               />

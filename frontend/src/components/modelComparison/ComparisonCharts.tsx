@@ -106,6 +106,9 @@ function MetricChart({
     .sort((a, b) => a.value - b.value)
 
   const bestId = data.length > 0 ? (spec.bestIsHigh ? data[data.length - 1].modelId : data[0].modelId) : null
+  const bestDatum = data.find((datum) => datum.modelId === bestId) ?? null
+
+  const namedValue = (modelName: string, value: number) => `${modelName}, ${spec.format(value)} ${spec.unit}`.trim()
 
   return (
     <section className="glass-card p-5" aria-label={`${spec.title} chart`}>
@@ -122,7 +125,9 @@ function MetricChart({
       ) : (
         <div
           role="img"
-          aria-label={`${spec.title}. Bars show stored values; the best value is at the top.`}
+          aria-label={`${spec.title} chart. ${
+            bestDatum ? `Best ${spec.title.split(' ')[0]} is ${namedValue(bestDatum.label, bestDatum.value)}.` : ''
+          } Bars show stored values; a keyboard-accessible model list follows the chart.`}
           style={{ height: 320 }}
         >
           <ResponsiveContainer width="100%" height="100%">
@@ -170,6 +175,21 @@ function MetricChart({
           </ResponsiveContainer>
         </div>
       )}
+      {data.length > 0 && (
+        <ul className="sr-only" aria-label="Keyboard-accessible model list">
+          {data.map((datum) => (
+            <li key={datum.modelId}>
+              <button type="button" onClick={() => onSelectModel(datum.modelId)}>
+                {isRenderedBest({ datum, bestId }) ? `Select ${namedValue(datum.label, datum.value)}, best value` : `Select ${namedValue(datum.label, datum.value)}`}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
+}
+
+function isRenderedBest({ datum, bestId }: { datum: ChartDatum; bestId: string | null }): boolean {
+  return datum.modelId === bestId
 }

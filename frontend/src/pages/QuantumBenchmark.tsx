@@ -9,15 +9,17 @@
  * Quantum vs Classical Benchmark — the researcher's comparison page
  * (route `/quantum-benchmark`).
  *
- * Reads the persisted experiment ledger through the optimization gateway:
- *   GET /api/optimization/jobs            → all visible jobs (summaries)
- *   GET /api/optimization/jobs/:id/result → the selected run's full document
+ * Reads the persisted benchmark measurements through the gateway's benchmark
+ * endpoints:
+ *   GET /api/optimization/benchmarks       → the experiment ledger (stored rows)
+ *   GET /api/optimization/:id/benchmark    → the selected run's stored document
  *
- * Everything rendered — objective, runtime, violations, approximation ratio,
- * configuration — is stored data served verbatim by the backend. The
+ * Everything rendered — objective, runtime, constraint violations,
+ * approximation ratio (with basis and seed), configuration — is measured data
+ * served verbatim by the backend from the pipeline's write-once snapshot. The
  * interpretation panel follows strict honesty rules (equal → "equal", worse →
- * "worse", violations → invalid for comparison) and never claims a universal
- * quantum advantage.
+ * "worse", violations → invalid for comparison, classical-only fallback → no
+ * quantum measurement) and never claims a universal quantum advantage.
  */
 
 import { Link } from 'react-router-dom'
@@ -43,16 +45,15 @@ export function QuantumBenchmark() {
     loading,
     error,
     selectedJobId,
-    selectedSummary,
-    result,
-    resultLoading,
-    resultError,
+    document,
+    documentLoading,
+    documentError,
     refresh,
     selectRun,
   } = useQuantumBenchmark()
 
-  const newestCompletedAt =
-    completedRuns.length > 0 ? completedRuns[completedRuns.length - 1].completedAt ?? completedRuns[0].createdAt : null
+  // The ledger is served newest first, so the first row is the newest completion.
+  const newestCompletedAt = completedRuns.length > 0 ? completedRuns[0].completedAt ?? null : null
 
   return (
     <div className="min-h-screen px-4 pb-16 pt-6 sm:px-6 lg:px-10">
@@ -105,7 +106,7 @@ export function QuantumBenchmark() {
             <BenchmarkHistory ledger={ledger ?? []} selectedJobId={selectedJobId} onSelect={selectRun} />
 
             <div className="min-w-0 space-y-5">
-              {selectedSummary === null && !resultLoading && (
+              {selectedJobId === null && !documentLoading && (
                 <StateBanner
                   kind="empty"
                   title="Nothing selected"
@@ -113,7 +114,7 @@ export function QuantumBenchmark() {
                 />
               )}
 
-              {selectedSummary && resultLoading && (
+              {selectedJobId !== null && documentLoading && (
                 <div className="space-y-5">
                   <Skeleton className="h-20 w-full" />
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -125,24 +126,24 @@ export function QuantumBenchmark() {
                 </div>
               )}
 
-              {selectedSummary && !resultLoading && !result && resultError && (
+              {selectedJobId !== null && !documentLoading && !document && documentError && (
                 <StateBanner
                   kind="error"
-                  title="Could not load the selected run"
-                  message={resultError}
+                  title="Could not load the selected experiment"
+                  message={documentError}
                   onRetry={refresh}
                 />
               )}
 
-              {selectedSummary && !resultLoading && result && (
+              {selectedJobId !== null && !documentLoading && document && (
                 <>
-                  <BenchmarkInterpretation summary={selectedSummary} result={result} />
-                  <BenchmarkSummary summary={selectedSummary} result={result} />
-                  <BenchmarkTable summary={selectedSummary} result={result} />
-                  <BenchmarkCharts result={result} />
+                  <BenchmarkInterpretation document={document} />
+                  <BenchmarkSummary document={document} />
+                  <BenchmarkTable document={document} />
+                  <BenchmarkCharts document={document} />
                   <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-                    <ExperimentConfig summary={selectedSummary} result={result} />
-                    <BenchmarkExport summary={selectedSummary} result={result} />
+                    <ExperimentConfig document={document} />
+                    <BenchmarkExport document={document} />
                   </div>
                 </>
               )}
@@ -152,7 +153,7 @@ export function QuantumBenchmark() {
 
         <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-mist-600">
           <FlaskConical size={12} aria-hidden="true" />
-          Every figure on this page is data stored with the experiment — nothing is computed or claimed by the UI.
+          All figures come from the gateway's stored benchmark measurements for this experiment. No quantum speedup is claimed.
         </p>
       </div>
     </div>

@@ -68,6 +68,40 @@ export interface OptimizeAccepted {
 /** Lifecycle statuses the quantum service persists per job. */
 export type QuantumLifecycleStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'invalid'
 
+/** Terminal statuses the orchestrator stops polling on (migrations 006 + 009). */
+export const QUANTUM_TERMINAL_STATUSES: ReadonlySet<QuantumLifecycleStatus> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'invalid',
+])
+
+/**
+ * Normalized status document from `GET /quantum/jobs/:id/status`.
+ *
+ * Mirrors the quantum service's `_status_document` slice that the persistence
+ * layer needs to write an honest `quantum_jobs` row: the lifecycle status, the
+ * mode/backend actually used, and the failure pair for non-completed runs.
+ */
+export interface QuantumJobStatusDocument {
+  jobId: string
+  status: QuantumLifecycleStatus
+  algorithm: string
+  modeRequested: QuantumExecutionMode
+  modeUsed: ExecutionModeWire | null
+  backendRequested: QuantumBackend
+  backendUsed: QuantumBackend | null
+  qubitCount: number
+  shotCount: number
+  layers: number
+  submittedAt: string
+  startedAt: string | null
+  completedAt: string | null
+  cancellable: boolean
+  cancelRequested: boolean
+  error: { code: string; message: string } | null
+}
+
 export interface QuantumExecutionResult {
   executionId: string
   /** The quantum service's own job id, when the service surfaces it (persistence layer). */
@@ -94,6 +128,7 @@ export interface QuantumExecutionResult {
 export interface QuantumServiceClient {
   createQubo(input: CreateQuboInput): Promise<QuboCreated>
   optimize(input: OptimizeQaoaInput): Promise<OptimizeAccepted>
+  getStatus(jobId: string): Promise<QuantumJobStatusDocument>
   getResult(executionId: string): Promise<QuantumExecutionResult>
 }
 
@@ -162,6 +197,28 @@ export class HttpQuantumServiceClient implements QuantumServiceClient {
     return {
       executionId: data.execution_id,
       ...(data.job_id !== undefined && { jobId: data.job_id }),
+    }
+  }
+
+  async getStatus(jobId: string): Promise<QuantumJobStatusDocument> {
+    const data = await this.request<WireStatusDocument>(`/quantum/jobs/${encodeURIComponent(jobId)}/status`, undefined)
+    return {
+      jobId: data.job_id,
+      status: data.status,
+      algorithm: data.algorithm,
+      modeRequested: data.mode_requested,
+      modeUsed: data.mode_used ?? null,
+      backendRequested: data.backend_requested,
+      backendUsed: data.backend_used ?? null,
+      qubitCount: data.qubit_count,
+      shotCount: data.shot_count,
+      layers: data.layers,
+      submittedAt: data.submitted_at,
+      startedAt: data.started_at ?? null,
+      completedAt: data.completed_at ?? null,
+      cancellable: data.cancellable,
+      cancelRequested: data.cancel_requested,
+      error: data.error ?? null,
     }
   }
 
@@ -303,4 +360,24 @@ interface WireExecutionResult {
   energy_history: { iteration: number; energy: number }[]
   execution_time_ms: number
   objective_value?: number | null
+}
+
+/** Wire form of `GET /quantum/jobs/:id/status` (`_status_document`). */
+interface WireStatusDocument {
+  job_id: string
+  status: QuantumLifecycleStatus
+  algorithm: string
+  mode_requested: QuantumExecutionMode
+  mode_used: ExecutionModeWire | null
+  backend_requested: QuantumBackend
+  backend_used: QuantumBackend | null
+  qubit_count: number
+  shot_count: number
+  layers: number
+  submitted_at: string
+  started_at: string | null
+  completed_at: string | null
+  cancellable: boolean
+  cancel_requested: boolean
+  error: { code: string; message: string } | null
 }
