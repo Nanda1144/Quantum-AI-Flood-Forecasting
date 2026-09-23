@@ -1,0 +1,195 @@
+/**
+ * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+ * Module: frontend | Owner: Nanda | License: Apache-2.0
+ *
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ */
+
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import type { ModelComparisonRow } from '../../types/ai'
+import { chartColors, tooltipStyle } from '../charts/chartTheme'
+import { formatDuration, formatMetric } from '../../lib/format'
+
+interface ComparisonChartsProps {
+  rows: ModelComparisonRow[]
+  selectedModelId: string | null
+  onSelectModel: (modelId: string) => void
+}
+
+interface ChartDatum {
+  modelId: string
+  label: string
+  value: number
+}
+
+interface MetricSpec {
+  key: string
+  title: string
+  unit: string
+  pick: (row: ModelComparisonRow) => number | undefined
+  /** Reverse so the best value rises to the top of the category axis. */
+  bestIsHigh?: boolean
+  format: (value: number) => string
+}
+
+const METRICS: MetricSpec[] = [
+  {
+    key: 'mae',
+    title: 'MAE comparison',
+    unit: 'm',
+    pick: (row) => row.metrics.mae,
+    format: (value) => formatMetric(value),
+  },
+  {
+    key: 'rmse',
+    title: 'RMSE comparison',
+    unit: 'm',
+    pick: (row) => row.metrics.rmse,
+    format: (value) => formatMetric(value),
+  },
+  {
+    key: 'r2',
+    title: 'R² comparison',
+    unit: '',
+    pick: (row) => row.metrics.r2,
+    bestIsHigh: true,
+    format: (value) => formatMetric(value),
+  },
+  {
+    key: 'inference',
+    title: 'Inference-time comparison',
+    unit: 'ms',
+    pick: (row) => row.inferenceTimeMs,
+    format: (value) => formatDuration(value),
+  },
+]
+
+export function ComparisonCharts({ rows, selectedModelId, onSelectModel }: ComparisonChartsProps) {
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {METRICS.map((metric) => (
+        <MetricChart
+          key={metric.key}
+          spec={metric}
+          rows={rows}
+          selectedModelId={selectedModelId}
+          onSelectModel={onSelectModel}
+        />
+      ))}
+    </div>
+  )
+}
+
+function MetricChart({
+  spec,
+  rows,
+  selectedModelId,
+  onSelectModel,
+}: {
+  spec: MetricSpec
+  rows: ModelComparisonRow[]
+  selectedModelId: string | null
+  onSelectModel: (modelId: string) => void
+}) {
+  const data: ChartDatum[] = rows
+    .map((row) => ({ modelId: row.modelId, label: row.name, value: spec.pick(row) ?? NaN }))
+    .filter((datum) => Number.isFinite(datum.value))
+    .sort((a, b) => a.value - b.value)
+
+  const bestId = data.length > 0 ? (spec.bestIsHigh ? data[data.length - 1].modelId : data[0].modelId) : null
+  const bestDatum = data.find((datum) => datum.modelId === bestId) ?? null
+
+  const namedValue = (modelName: string, value: number) => `${modelName}, ${spec.format(value)} ${spec.unit}`.trim()
+
+  return (
+    <section className="glass-card p-5" aria-label={`${spec.title} chart`}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold text-mist-100">{spec.title}</h3>
+        <span className="text-[11px] text-mist-600">
+          {data.length} of {rows.length} scored
+        </span>
+      </div>
+      {data.length === 0 ? (
+        <p className="py-10 text-center text-xs text-mist-600">
+          No '{spec.title.split(' ')[0]}' values stored in the current selection.
+        </p>
+      ) : (
+        <div
+          role="img"
+          aria-label={`${spec.title} chart. ${
+            bestDatum ? `Best ${spec.title.split(' ')[0]} is ${namedValue(bestDatum.label, bestDatum.value)}.` : ''
+          } Bars show stored values; a keyboard-accessible model list follows the chart.`}
+          style={{ height: 320 }}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, bottom: 0, left: 8 }} barCategoryGap={4}>
+              <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" tick={{ fill: chartColors.tick, fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis
+                dataKey="label"
+                type="category"
+                width={118}
+                tick={{ fill: chartColors.tick, fontSize: 10 }}
+                tickLine={false}
+                axisLine={false}
+                interval={0}
+                tickFormatter={(label: string) => (label.length > 16 ? `${label.slice(0, 15)}…` : label)}
+              />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={{ fill: 'rgba(52, 211, 153, 0.08)' }}
+                formatter={(value) => [`${spec.format(Number(value))} ${spec.unit}`.trim(), spec.title]}
+              />
+              <Bar
+                dataKey="value"
+                name={spec.title}
+                radius={[0, 4, 4, 0]}
+                onClick={(entry) => {
+                  const datum = entry as unknown as { payload: ChartDatum }
+                  if (datum?.payload?.modelId) onSelectModel(datum.payload.modelId)
+                }}
+              >
+                {data.map((datum) => {
+                  const isBest = datum.modelId === bestId
+                  const isSelected = datum.modelId === selectedModelId
+                  return (
+                    <Cell
+                      key={datum.modelId}
+                      fill={isSelected ? chartColors.probability : isBest ? chartColors.cyan : chartColors.forest}
+                      fillOpacity={isSelected ? 1 : isBest ? 0.9 : 0.55}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  )
+                })}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      {data.length > 0 && (
+        <ul className="sr-only" aria-label="Keyboard-accessible model list">
+          {data.map((datum) => (
+            <li key={datum.modelId}>
+              <button type="button" onClick={() => onSelectModel(datum.modelId)}>
+                {isRenderedBest({ datum, bestId }) ? `Select ${namedValue(datum.label, datum.value)}, best value` : `Select ${namedValue(datum.label, datum.value)}`}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function isRenderedBest({ datum, bestId }: { datum: ChartDatum; bestId: string | null }): boolean {
+  return datum.modelId === bestId
+}
