@@ -1,0 +1,90 @@
+flowchart TD
+  subgraph SRC["Data Sources"]
+    S1["IoT gauge telemetry<br/>TEAM IMPLEMENTATION"]
+    S2["GIS river-reach geometry<br/>TEAM IMPLEMENTATION"]
+    S3["Historical hydrological record<br/>NOT CURRENTLY AVAILABLE"]
+  end
+
+  subgraph PREP["Data Preparation - Navya"]
+    P1["Schema and range validation<br/>MY IMPLEMENTATION"]
+    P2["Chronological train/validation/test split<br/>MY IMPLEMENTATION"]
+    P3["Scaler and imputer fitted on train only<br/>MY IMPLEMENTATION"]
+    P4["Strictly causal feature engineering<br/>MY IMPLEMENTATION"]
+  end
+
+  subgraph MODEL["Forecasting Models - Navya"]
+    M1["Ridge regression baseline<br/>MY IMPLEMENTATION"]
+    M2["XGBoost candidate<br/>MY IMPLEMENTATION"]
+    M3["LSTM / GRU candidates<br/>NOT CURRENTLY AVAILABLE"]
+    M4["QML candidate<br/>NOT CURRENTLY AVAILABLE"]
+  end
+
+  subgraph EVAL["Selection and Evaluation - Navya"]
+    E1["Validation split only, for ranking<br/>MY IMPLEMENTATION"]
+    E2["Test split scored exactly once<br/>MY IMPLEMENTATION"]
+    E3["Split-aware metric labelling<br/>MY IMPLEMENTATION"]
+  end
+
+  subgraph RISK["Flood Risk Assessment - Navya"]
+    R1["Threshold and risk band policy<br/>MY IMPLEMENTATION"]
+    R2["Residual sigma uncertainty<br/>MY IMPLEMENTATION"]
+    R3["Official flood stage source<br/>NOT CURRENTLY AVAILABLE"]
+  end
+
+  subgraph HAND["Forecast / Decision Handoff"]
+    H1["Navya forecast contract<br/>MY IMPLEMENTATION"]
+    H2["forecast_id only, team schema<br/>TEAM IMPLEMENTATION"]
+    H3["Provenance and split fields on the wire<br/>PROPOSED INTEGRATION"]
+  end
+
+  subgraph OPT["Sensor Optimization - Team"]
+    O1["QUBO / optimization formulation<br/>TEAM IMPLEMENTATION"]
+    O2["Candidate sensor configuration<br/>TEAM IMPLEMENTATION"]
+  end
+
+  subgraph QUANTUM["Quantum / Optimization Layer - Team"]
+    Q1["Quantum solver execution<br/>TEAM IMPLEMENTATION"]
+    Q2["Solver comparison and timing<br/>TEAM IMPLEMENTATION"]
+  end
+
+  subgraph RESP["Disaster Response / Dashboard"]
+    D1["Team application shell and routes<br/>TEAM IMPLEMENTATION"]
+    D2["Navya forecasting dashboard<br/>MY IMPLEMENTATION - not mounted"]
+  end
+
+  S1 --> P1
+  S3 -.-> P1
+  P1 --> P2 --> P3 --> P4
+  P4 --> M1
+  P4 --> M2
+  P4 -.-> M3
+  P4 -.-> M4
+  M1 --> E1
+  M2 --> E1
+  E1 --> E2 --> E3
+  E1 --> R1
+  E3 --> R1
+  E3 --> R2
+  R1 -.-> R3
+  R1 --> H1
+  R2 --> H1
+  H1 --> H2
+  H1 -.-> H3
+  H2 --> O1
+  H3 -.-> O1
+  O1 --> Q1 --> Q2
+  Q2 --> O2
+  H2 --> D1
+  H3 -.-> D1
+  D1 -.-> D2
+  O2 --> D1
+
+  classDef navya fill:#0f3d2e,stroke:#34d399,color:#ecfdf5
+  classDef team fill:#1e293b,stroke:#64748b,color:#e2e8f0
+  classDef missing fill:#3f1d2e,stroke:#fb7185,color:#ffe4e6,stroke-dasharray:5 5
+  classDef proposed fill:#3b2f14,stroke:#fbbf24,color:#fef3c7,stroke-dasharray:4 4
+
+  class P1,P2,P3,P4,M1,M2,E1,E2,E3,R1,R2,H1,D2 navya
+  class S1,S2,H2,O1,O2,Q1,Q2,D1 team
+  class S3,M3,M4,R3 missing
+  class H3 proposed

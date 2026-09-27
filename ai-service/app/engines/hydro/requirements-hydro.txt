@@ -1,0 +1,37 @@
+# Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
+# Module: ai-service | Owner: Navya (ForecastingEngine seam) | License: Apache-2.0
+#
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
+# Nanda & Navya). It is honest by construction, per the platform README: no
+# fabricated data, no invented metrics, every surrogate or fallback is clearly
+# labelled, and no quantum speedup is ever claimed.
+
+# Dependencies of Navya's hydrological forecasting package
+# (`app/engines/hydro/`).
+#
+# IMPORTANT: these are NOT in the team's `ai-service/requirements.txt`. That file
+# is team-owned and is deliberately left untouched by this branch. The required
+# change is recorded as a team-owner action in
+# `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md` (item: AI-REQ-01).
+#
+# `app/engines/hydro` is only importable when this engine is selected, so a
+# platform deployment that keeps the reference engine does not strictly need
+# these packages. Installing them is required to run Navya's tests and training
+# entrypoint.
+
+# --- required -----------------------------------------------------------------
+# Lightweight, already present in most scientific-Python environments. Both are
+# used across preprocessing / features / models / evaluation.
+numpy>=1.26
+pandas>=2.1
+
+# --- optional -----------------------------------------------------------------
+# Unlocks the `random_forest` and `gradient_boosting` candidates in the model
+# registry. The pipeline runs, and `models.unavailable_models()` reports both as
+# unavailable, when this is absent. `linear` and `ridge` are pure NumPy and are
+# always available.
+#
+# `xgboost` is probed at runtime and is NOT pinned here: it is a large dependency
+# and there is no requirement for it. The registry reports it as unavailable
+# unless the package is already installed.
+# scikit-learn>=1.3

@@ -1,0 +1,37 @@
+flowchart TD
+  S1["STAGE 1 - Raw data source<br/>real gauge record: NOT CURRENTLY AVAILABLE"]
+  S2["STAGE 1b - Synthetic demo sample<br/>MY IMPLEMENTATION - 2160 rows, checksummed<br/>carries mandatory disclaimer"]
+
+  S1 -.->|blocked| V0["CANNOT PROCEED<br/>no approved dataset, licence, schema or station inventory"]
+  S2 --> V1["STAGE 2 - Validation<br/>schema, dtype, range, missing-value accounting<br/>MY IMPLEMENTATION"]
+
+  V1 --> P1["STAGE 3 - Preprocessing<br/>chronological split, no shuffle, no seed<br/>imputer and scaler fitted on TRAIN only<br/>MY IMPLEMENTATION"]
+  P1 --> F1["STAGE 4 - Feature engineering<br/>strictly causal lags and rolling aggregates<br/>no future value may cross the split boundary<br/>MY IMPLEMENTATION"]
+  F1 --> M1["STAGE 5 - Model input matrix<br/>23 features in the realized synthetic run"]
+
+  M1 --> T1["TRAIN split - fit the model"]
+  M1 --> T2["VALIDATION split - ranking only"]
+  M1 --> T3["TEST split - scored exactly once, never ranked"]
+
+  T1 --> F2["STAGE 6 - Forecasting<br/>ridge selected on validation<br/>xgboost optional, skipped if unavailable"]
+  T2 --> F2
+  T3 --> F2
+
+  F2 --> O1["STAGE 7 - Forecast output<br/>value, horizon, model id, timestamp<br/>synthetic/demo indicator"]
+  F2 --> O2["Residual sigma - uncertainty signal"]
+
+  O1 --> R1["STAGE 8 - Flood risk<br/>configurable bands, never a hard-coded threshold<br/>official flood stage: NOT CURRENTLY AVAILABLE"]
+  O2 --> R1
+
+  R1 --> P1B["Provenance record<br/>dataset ref, licence, checksum, sampling, station"]
+  R1 --> H1["STAGE 9 - Optimization handoff<br/>forecast_id to team optimization<br/>PROPOSED INTEGRATION for extra fields"]
+
+  H1 --> DB["STAGE 10 - Persistence<br/>team forecast table unchanged<br/>navya provenance columns via migration 010"]
+
+  classDef navya fill:#0f3d2e,stroke:#34d399,color:#ecfdf5
+  classDef missing fill:#3f1d2e,stroke:#fb7185,color:#ffe4e6,stroke-dasharray:5 5
+  classDef proposed fill:#3b2f14,stroke:#fbbf24,color:#fef3c7,stroke-dasharray:4 4
+
+  class S2,V1,P1,F1,M1,T1,T2,T3,F2,O1,O2,R1,P1B,DB navya
+  class H1 proposed
+  class S1,V0 missing

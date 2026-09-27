@@ -359,32 +359,34 @@ QML Experiment
 Metric Comparison
         ↓
 Final Model Selection
+```
 
-12. Important Dependency
+#12. Important Dependency
 
 Model selection cannot be finalized before inspecting the actual historical dataset.
 
 The following information must be confirmed:
 
-Available columns
-Timestamp format
-River/location information
-Water-level measurements
-Inflow/discharge measurements
-Rainfall measurements
-Missing values
-Sampling frequency
-Number of observations
-Available prediction horizon
+- Available columns
+- Timestamp format
+- River/location information
+- Water-level measurements
+- Inflow/discharge measurements
+- Rainfall measurements
+- Missing values
+- Sampling frequency
+- Number of observations
+- Available prediction horizon
 
 Therefore, the current model list is a research-stage candidate list.
 
-13. Connection to Sensor Placement
+#13. Connection to Sensor Placement
 
 The forecasting component provides information that can support the sensor-placement component.
 
 Conceptually:
 
+```text
 Historical Data
       ↓
 Flood / Inflow Forecast
@@ -396,23 +398,28 @@ High-Risk Geographic Areas
 Sensor Placement Optimization
       ↓
 Classical Optimization vs Quantum Optimization
+```
 
-14. Current Research Status
-Completed
-Flood forecasting basics research
-Candidate forecasting model identification
-Preliminary model comparison framework
-Pending
-Actual dataset inspection
-Target-variable selection
-Feature selection
-Prediction horizon definition
-Baseline implementation
-Model training
-Evaluation
-Final forecasting model selection
+#14. Current Research Status
 
-15. Conclusion
+**Completed**
+
+- Flood forecasting basics research
+- Candidate forecasting model identification
+- Preliminary model comparison framework
+
+**Pending**
+
+- Actual dataset inspection
+- Target-variable selection
+- Feature selection
+- Prediction horizon definition
+- Baseline implementation
+- Model training
+- Evaluation
+- Final forecasting model selection
+
+#15. Conclusion
 
 UC-067 requires a forecasting component capable of producing useful information about future flood or inflow conditions.
 

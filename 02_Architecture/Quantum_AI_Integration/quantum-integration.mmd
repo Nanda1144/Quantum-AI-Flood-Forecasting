@@ -1,0 +1,32 @@
+flowchart TD
+  F1["Navya forecast output<br/>predicted value, horizon, model id, timestamp<br/>MY IMPLEMENTATION"]
+  F2["Flood-risk information<br/>risk band, configurable thresholds marked pending<br/>residual sigma as uncertainty signal<br/>MY IMPLEMENTATION"]
+  F3["Provenance<br/>dataset type, licence, checksum, station, horizon<br/>MY IMPLEMENTATION"]
+
+  F1 --> P1["Optimization parameters<br/>the translation from forecast to objective<br/>PROPOSED INTEGRATION - not implemented"]
+  F2 --> P1
+  F3 --> P1
+
+  P1 --> S1["Sensor placement problem statement<br/>TEAM IMPLEMENTATION - owns the formulation"]
+  S1 --> Q1["Optimization / QUBO layer<br/>TEAM IMPLEMENTATION - owns the encoding"]
+  Q1 --> Q2{"Solver execution<br/>classical and, if used, quantum<br/>TEAM IMPLEMENTATION"}
+  Q2 --> C1["Candidate sensor configuration<br/>TEAM IMPLEMENTATION - owns the result"]
+
+  C1 --> D1["Dashboard display<br/>TEAM IMPLEMENTATION - owns presentation"]
+  F1 -.->|forecast_id only today| Q1
+  F2 -.->|blocked: no schema slot| Q1
+  F3 -.->|blocked: no schema slot| Q1
+
+  N1["Navya position on quantum performance<br/>No advantage claimed. No speedup claimed.<br/>No result produced or measured by Navya.<br/>Any comparison requires real measurement<br/>by the team on real instances."]
+
+  Q2 -.- N1
+
+  classDef navya fill:#0f3d2e,stroke:#34d399,color:#ecfdf5
+  classDef team fill:#1e293b,stroke:#64748b,color:#e2e8f0
+  classDef proposed fill:#3b2f14,stroke:#fbbf24,color:#fef3c7,stroke-dasharray:4 4
+  classDef note fill:#2e1b3f,stroke:#c084fc,color:#f3e8ff
+
+  class F1,F2,F3 navya
+  class P1 proposed
+  class S1,Q1,Q2,C1,D1 team
+  class N1 note
