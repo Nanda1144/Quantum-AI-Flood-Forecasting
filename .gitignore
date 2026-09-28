@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.vscode/
+
+# Ignore temporary/large GIS files
+*.zip
+*.kml
+*.shp
+*.shx
+*.dbf
+*.prj

@@ -1,0 +1,5 @@
+id,name,basin,latitude,longitude,capacity,status
+H001,Krishna Emergency Hospital,Krishna,16.30,80.45,500,Available
+H002,Srisailam Medical Center,Krishna,16.08,78.87,200,Available
+H003,Godavari Emergency Hospital,Godavari,17.00,81.80,400,Available
+H004,Polavaram Medical Center,Godavari,17.25,81.65,250,Available

@@ -1,0 +1,7 @@
+id,name,basin,latitude,longitude,status
+R001,Krishna Main Road,Krishna,16.20,80.00,Open
+R002,Srisailam Access Road,Krishna,16.08,78.87,Open
+R003,Godavari Main Road,Godavari,17.30,81.80,Open
+R004,Polavaram Access Road,Godavari,17.25,81.65,Open
+R005,Krishna Flood Route,Krishna,16.25,80.05,Blocked
+R006,Godavari Flood Route,Godavari,17.35,81.75,Blocked

@@ -1,0 +1,3 @@
+id,name,basin,latitude,longitude,priority_score,priority_level
+O001,Krishna Optimized Sensor,Krishna,16.25,80.05,85,High
+O002,Godavari Optimized Sensor,Godavari,17.35,81.75,87,High
