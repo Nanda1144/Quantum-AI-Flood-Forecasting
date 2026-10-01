@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,10 +6,18 @@ from app.api.data import router as data_router
 from app.database.connection import create_tables
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize database tables on application startup
+    create_tables()
+    yield
+
+
 app = FastAPI(
     title="Q-FLARE Data Management API",
     description="Data Management and Data Validation APIs for Q-FLARE",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -21,18 +30,13 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ============================================================
-# DATABASE
-# ============================================================
-
-create_tables()
 
 
 # ============================================================
