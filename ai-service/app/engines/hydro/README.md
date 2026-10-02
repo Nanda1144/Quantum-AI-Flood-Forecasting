@@ -7,6 +7,14 @@
 > every surrogate or fallback is clearly labelled, and no quantum speedup is ever
 > claimed.
 
+> **The only dataset in this repository is SYNTHETIC/DEMO.** Its exact wording:
+>
+> `THIS DATASET IS SYNTHETIC/DEMO DATA AND MUST NOT BE PRESENTED AS REAL HYDROLOGICAL OBSERVATION DATA.`
+>
+> Its single source is `provenance.SYNTHETIC_DATA_DISCLAIMER`; do not restate or
+> reword it. Every record carries it in its own `disclaimer` field, and every
+> report repeats it.
+
 Everything in this directory is **new**. Nothing the team owns is modified,
 removed or re-implemented. These files are read-only inputs:
 
@@ -49,6 +57,10 @@ Three properties drive every decision below.
 | `domains.py` | **Phase 1.** Record schemas for every data domain, plus the domain registry. Pure stdlib. |
 | `quality.py` | **Phase 1.** Structural validation, stable issue codes, duplicate and conflict detection. Reports; never repairs. Pure stdlib. |
 | `datasets.py` | **Phase 1.** Dataset descriptors and the domain-coverage matrix. Pure stdlib. |
+| `preprocess_config.py` | **Phase 2.** Every preprocessing policy, its default, and the rules that refuse a configuration. Pure stdlib. |
+| `preprocess_units.py` | **Phase 2.** Exact documented unit conversions. Guesses nothing. Pure stdlib. |
+| `preprocess_temporal.py` | **Phase 2.** Timestamps, ordering, cadence, gap grids, gap policy, right-labelled resampling, chronological splitting. Pure stdlib. |
+| `preprocess_pipeline.py` | **Phase 2.** The orchestrator, returning records plus a machine-readable report. Pure stdlib. |
 | `preprocessing.py` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features.py` | Strictly-causal lag / rolling / rainfall / calendar features, and forward-time supervision alignment. |
 | `models.py` | The executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) and the documented-but-unimplemented roadmap. |
@@ -67,9 +79,23 @@ Importing them loads nothing outside the standard library — no NumPy, no panda
 no scikit-learn — and they consume `config`, `contract` and `provenance` rather
 than restating them.
 
+The four `preprocess_*` modules are **Phase 2**, documented in
+[`PHASE2_PREPROCESSING.md`](PHASE2_PREPROCESSING.md). Like Phase 1 they are pure
+standard library, and for the same reason: a preprocessing question should not
+require the training stack. They add no second validation framework (Phase 1's
+`QualityIssue` stays the vocabulary; its results are embedded under
+`phase1_quality`) and no second provenance record.
+
+**Phase 2 does no feature engineering at all.** No lags, no rolling windows, no
+rainfall accumulation, no flood-risk arithmetic — those belong to `features`
+(Phase 3) and `risk`.
+
 `engine` is imported **lazily** by `__init__.py`, so the factory stays the only
 path that constructs it and tooling can import `config` without pulling in the
-team Pydantic contract.
+team Pydantic contract. The Phase 2 entry points are lazy for the same effect:
+eagerly importing `preprocess` here would drag NumPy in through `synthetic` and
+make the standard-library-only claim reachable only by importing the submodule
+directly.
 
 ---
 
@@ -262,6 +288,18 @@ rather than error. The team's own tests are never touched.
 (`app/schemas/models.py`, `app/engines/base.py`, `app/engines/factory.py`) is
 absent, because on a branch without them there is nothing to conform to. After
 the integration merge, the whole file runs.
+
+Phase 2 adds 174 tests across four modules, all named `test_hydro_preprocess_*`
+and therefore covered by the same skip guard:
+
+| Module | Groups |
+| --- | --- |
+| `tests/test_hydro_preprocess_timestamps.py` | timestamps, ordering, units |
+| `tests/test_hydro_preprocess_cleaning.py` | duplicates, conflicts, gaps |
+| `tests/test_hydro_preprocess_resample_split.py` | resampling, splitting, leakage |
+| `tests/test_hydro_preprocess_pipeline.py` | end-to-end and guarantees |
+
+Current full-suite result: **771 passed, 1 skipped** (597 passed before Phase 2).
 
 ---
 

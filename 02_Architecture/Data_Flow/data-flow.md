@@ -85,6 +85,52 @@ partial dataset presented as a complete one is a silent lie.
 
 ### Stage 3 — Preprocessing `[MY IMPLEMENTATION]`
 
+Two paths exist and both are tested; neither replaces the other.
+
+**Phase 2 path — `preprocess_pipeline.py` + `preprocess_temporal.py` + `preprocess_units.py` +
+`preprocess_config.py`** (narrow `Observation` records, pure standard library, full report).
+This is the auditable contract. It is summarised below and documented in full in
+`ai-service/app/engines/hydro/PHASE2_PREPROCESSING.md`.
+
+**Pre-existing path — `preprocessing.py`** (wide `DataFrame`, used by `training.py` and
+`engine.py`). Untouched by Phase 2; Phase 2 does not rewrite, replace or deprecate it.
+
+What the Phase 2 path does, in order:
+
+| Step | Behaviour | Default |
+| --- | --- | --- |
+| Timestamps | Canonical UTC ISO-8601 with a trailing `Z`; the source's original string is preserved in `notes`. No silent timezone assumption. | `require_explicit` |
+| Ordering | Total order on `(entity, instant, domain, source, provenance, …)` — byte-identical output for any input order. | always |
+| Duplicates | Keyed on domain, entity, canonical instant, quantity **and source**. Reported, nothing removed. | `report` |
+| Conflicts | Two readings of one instant that disagree. **Refused** — no policy ever averages, sums or takes a median. | `error` |
+| Units | Exact documented factors only. An unrecognised unit becomes `UNDETERMINED` and the value is kept untouched. | `preserve_undetermined` |
+| Gaps | Cadence inferred from the smallest positive delta; empty slots made visible on a grid. Gaps stay visible unless a fill is explicitly requested. | `retain` |
+| Resampling | **Off.** Nothing establishes what cadence a real gauge network reports. Bins, when enabled, are right-labelled. | `None` |
+| Split | Chronological, never random. Validated `train_end < validation_start` and `validation_end < test_start`. | `global` |
+
+Resolving a conflict requires a **citation** (`conflict_policy_source`) naming who
+approved it and against what document — choosing between two readings of one gauge
+instant is a decision about someone else's data.
+
+A backward-looking fill requires both `allow_leakage_sensitive=True` **and** a
+per-operation acknowledgement. `config.is_causal` answers the single audit question:
+"can any row in the output depend on a value from after it?"
+
+**Phase 2 performs no feature engineering.** No lags, no rolling or moving-average windows,
+no rainfall accumulation, no flood-risk arithmetic. Those belong to stage 4. The only
+aggregation Phase 2 can perform is resampling onto a coarser grid, and only with an
+explicitly declared frequency and a per-quantity `AggregationRule`.
+
+Every decision is reported. `PreprocessingReport` is JSON-serialisable and deterministic
+under input permutation, and separates `errors` / `warnings` / `infos`. Resampling is
+accounted as a measured `resampling_delta`, never as rows "removed", and the invariant
+
+```
+records_in - records_discarded + resampling_delta + missing.row_delta == records_out
+```
+
+is published as `rows_reconciled`. Every finding carries a stable `PREPROCESS_*` code.
+
 The three rules that matter, each enforced in code and asserted by tests:
 
 1. **Chronological split only.** Ordered by time, then cut. No shuffle, no random split, no
@@ -178,6 +224,27 @@ That is a **weaker** claim than 010's and is not to be read as equivalent. A tex
 cannot prove the SQL parses. **Anyone applying 011 must run it against a real instance, and
 that run — not the test suite — is the verification.** Until then, treat 011 as unexecuted.
 
+**Phase 2 adds no migration and does not assume 011 ran.** It is entirely
+application-level: it operates on `Observation` records in memory and changes no schema, so
+its correctness does not depend on the state of the database. That dependency, if it ever
+arises, is for a database owner to resolve rather than for a new migration to paper over.
+
+### Phase 2 verification status
+
+| Claim | How verified |
+|---|---|
+| 174 Phase 2 tests pass | `python -m pytest tests -q --no-header --tb=short` from `ai-service/` — **771 passed, 1 skipped** (597 passed, 1 skipped before Phase 2) |
+| No Phase 1 or `preprocessing.py` regression | `tests/test_hydro_preprocessing.py` and `tests/test_hydro_leakage.py` (68 tests) still pass unmodified |
+| Determinism | Report and output records compared byte-for-byte across shuffled inputs |
+| Row accounting | `rows_reconciled` asserted for every gap policy, including under resampling |
+| Standard-library-only | `tests/test_hydro_preprocess_pipeline.py` asserts no `random` / `numpy` import and no `seed` / `shuffle` keyword over the AST of all four modules |
+| End to end on the committed sample | 2160 CSV rows → 6480 `Observation` records → 3 series at 1 h → 4536 / 972 / 972 split, 6486 leakage checks passed |
+| No fabricated domain facts | Tests assert no station identifier, threshold, rating curve or basin boundary is asserted anywhere in the phase |
+
+Phase 2 has **not** been run against a real gauge network, because no real
+dataset exists in this repository. Every number it produces is from SYNTHETIC/DEMO
+data and is labelled as such.
+
 ---
 
 ## 4. Data provenance carried end to end
@@ -195,6 +262,16 @@ that run — not the test suite — is the verification.** Until then, treat 011
 
 `datasetType` is the load-bearing field: the UI, the guards, and the storage check all branch
 on it. A record whose `datasetType` is `unknown` is **not** treated as real.
+
+Phase 2 preserves this rather than restating it. The synthetic-data disclaimer has exactly one
+definition, `provenance.SYNTHETIC_DATA_DISCLAIMER`, whose wording is:
+
+`THIS DATASET IS SYNTHETIC/DEMO DATA AND MUST NOT BE PRESENTED AS REAL HYDROLOGICAL OBSERVATION DATA.`
+
+Every record carries it in a `disclaimer` field kept separate from `notes` — so a stage
+appending a provenance note cannot displace it. A dataset of unknown type falls back to
+`UNVERIFIED_DATA_DISCLAIMER`: unknown is treated as unverified, never as real. Split
+boundaries reuse the existing `provenance.SplitBoundaries` type.
 
 **Station-to-GIS candidate mapping remains `[NOT CURRENTLY AVAILABLE]`.** No authoritative
 station or reach identifier list, and no station-to-GIS crosswalk, has been supplied.

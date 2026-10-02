@@ -22,6 +22,10 @@ Module map
 | `domains` | **Phase 1.** Record schemas for each data domain (weather, rainfall, water level, discharge, inflow, flood event, risk score) and the domain registry. Pure stdlib. |
 | `quality` | **Phase 1.** Structural validation and data-quality metadata: issue codes, one-pass reporting, duplicate and conflict detection. Reports; never repairs. Pure stdlib. |
 | `datasets` | **Phase 1.** Dataset descriptors and the domain-coverage matrix. What a dataset is *and what it does not contain*. Pure stdlib. |
+| `preprocess_config` | **Phase 2.** Every preprocessing policy and its refusal rules, in one place. Declares what is conservative, what fabricates and what leaks. Pure stdlib. |
+| `preprocess_units` | **Phase 2.** Exact documented unit conversions. Guesses nothing; an unrecognised unit becomes `UNDETERMINED` and the value is kept. Pure stdlib. |
+| `preprocess_temporal` | **Phase 2.** Timestamps, ordering, cadence inference, gap grids, gap policy, right-labelled resampling, chronological splitting. Pure stdlib. |
+| `preprocess_pipeline` | **Phase 2.** The orchestrator: runs the stages in order and returns records plus a machine-readable report. Pure stdlib. |
 | `preprocessing` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features` | Strictly-causal lag / rolling / rainfall / calendar features and forward-time supervision alignment. |
 | `models` | Executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) plus the documented-but-unimplemented roadmap. |
@@ -48,6 +52,28 @@ which needs NumPy. That is pre-existing and unchanged by Phase 1.)
 They are also *additive*: they consume `config`, `contract` and `provenance`
 rather than restating them, so the forecast contract's field names and the
 mandatory data disclaimer each keep exactly one definition in this package.
+
+Phase 2 (`preprocess_config`, `preprocess_units`, `preprocess_temporal`,
+`preprocess_pipeline`)
+------------------------------------------------------------------------------
+Phase 2 turns validated Phase 1 records into a chronologically split, unit-aware,
+duplicate-free, gap-aware dataset — and reports exactly what it did. Like Phase 1
+it is pure standard library, and for the same reason: a preprocessing question
+should not require the training stack.
+
+See `PHASE2_PREPROCESSING.md`. The headline is what it does **not** do: Phase 2
+performs no feature engineering at all. No lags, no rolling windows, no rainfall
+accumulation, no flood-risk arithmetic. Those belong to `features` (Phase 3) and
+`risk`, and Phase 2 has no way to reach them.
+
+Phase 2 introduces no second validation framework and no second provenance
+record. Phase 1's `QualityIssue` remains the validation vocabulary, its results
+are embedded in the report under `phase1_quality`, and `SYNTHETIC_DATA_DISCLAIMER`
+and `SplitBoundaries` still have exactly one definition each.
+
+The Phase 2 entry point `preprocess` is resolved **lazily** (see `_LAZY` below)
+for the same reason `engine` is: importing it must not pull NumPy in through
+`synthetic`.
 
 Importing `engine` is **lazy** so that `app.engines.hydro.config` and friends can be
 imported by tooling without pulling in the team Pydantic contract, and so the
@@ -180,6 +206,15 @@ __all__ = [
     "committed_sample_catalog",
     "coverage_matrix",
     "synthetic_sample_descriptor",
+    # Phase 2 — preprocessing (pure stdlib; resolved lazily, see `_LAZY`)
+    "PreprocessConfig",
+    "PreprocessConfigError",
+    "PreprocessError",
+    "PreprocessingReport",
+    "PreprocessingResult",
+    "conservative_config",
+    "preprocess",
+    "strict_config",
     # contract
     "ForecastOutput",
     "OptimizationHandoff",
@@ -208,15 +243,34 @@ __all__ = [
     "EngineNotReadyError",
 ]
 
-#: Attribute name -> (module, symbol) for the lazily-imported engine surface.
+#: Attribute name -> (module, symbol) for the lazily-imported surfaces.
+#:
+#: Two groups, one mechanism, two different reasons.
+#:
+#: The engine is lazy because importing it pulls in the team Pydantic contract,
+#: and only `app.engines.factory.get_engine()` should build it.
+#:
+#: Phase 2 is lazy because it is standard-library-only and says so: exposing
+#: `preprocess` here as an eager import would make `from app.engines.hydro import
+#: preprocess` load NumPy via `synthetic`, and the purity claim would only be
+#: reachable by importing the submodule directly. Lazy resolution keeps
+#: `from app.engines.hydro import preprocess` honest.
 _LAZY: dict[str, tuple[str, str]] = {
     "HydroForecastEngine": (".engine", "HydroForecastEngine"),
     "EngineNotReadyError": (".engine", "EngineNotReadyError"),
+    "preprocess": (".preprocess_pipeline", "preprocess"),
+    "PreprocessError": (".preprocess_pipeline", "PreprocessError"),
+    "PreprocessingReport": (".preprocess_pipeline", "PreprocessingReport"),
+    "PreprocessingResult": (".preprocess_pipeline", "PreprocessingResult"),
+    "PreprocessConfig": (".preprocess_config", "PreprocessConfig"),
+    "PreprocessConfigError": (".preprocess_config", "PreprocessConfigError"),
+    "conservative_config": (".preprocess_config", "conservative_config"),
+    "strict_config": (".preprocess_config", "strict_config"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    """PEP 562 lazy attribute access for the engine surface."""
+    """PEP 562 lazy attribute access for the engine and Phase 2 surfaces."""
     target = _LAZY.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
