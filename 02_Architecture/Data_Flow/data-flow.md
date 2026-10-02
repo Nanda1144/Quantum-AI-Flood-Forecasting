@@ -43,6 +43,34 @@ risk band, then hand a `forecast_id` to team-owned optimization.
 pipeline is executable and so tests have a stable input. It is **synthetic/demo data** and
 must never be presented as hydrological observation data.
 
+**Phase 1 — the record and coverage schemas `[MY IMPLEMENTATION]`**
+
+The absence above is real but was *invisible*: a wide frame silently absorbs a gauge network
+that reports a level but no discharge, and a catchment with no rainfall record. Phase 1 makes
+each absence representable and queryable instead of implicit.
+
+- `ai-service/app/engines/hydro/domains.py` — one record schema per domain: `weather`,
+  `rainfall`, `water_level`, `discharge`, `inflow` (`Observation`), plus `FloodEvent` and
+  `RiskScoreRecord`. Timestamps must carry an explicit timezone; units must be declared but
+  are deliberately **not** whitelisted or converted; `NaN` is refused; nothing invents a
+  station, a datum or a threshold.
+- `ai-service/app/engines/hydro/quality.py` — structural validation with stable issue codes.
+  **A validator reports; it never repairs.** A duplicate is reported, not collapsed; two
+  disagreeing readings of one instant are a conflict to be resolved by the dataset owner, not
+  by this repository. No missing value is ever filled.
+- `ai-service/app/engines/hydro/datasets.py` — per-domain coverage: `available`, `absent` or
+  `unknown`. The default catalog is empty and says so in words. The one descriptor that exists
+  describes the committed sample by reading the file's own bytes, and reports
+  `station_reference: None` because that file has no station column.
+- `database/migrations/011_navya_hydro_observation_domains.{up,down}.sql` — additive,
+  idempotent, reversible storage for the same schemas. **Not yet executed against a live
+  PostgreSQL instance**; see §4.
+
+Coverage of the committed synthetic sample, as reported by
+`datasets.coverage_matrix()`: `water_level`, `inflow` and `rainfall` are **available**;
+`weather`, `discharge`, `flood_event` and `risk_score` are **absent**. Nothing in Phase 1
+resolves any of those absences, and no flood event register was invented to fill one.
+
 ### Stage 2 — Validation `[MY IMPLEMENTATION]`
 
 `ai-service/app/engines/hydro/preprocessing.py`
@@ -121,9 +149,38 @@ Navya ships the adapter and the contract. The team's schema is not modified. See
 - Verified 19/19 against local PostgreSQL 17.10, including idempotent re-run and full
   round-trip
 
+`database/migrations/011_navya_hydro_observation_domains.{up,down}.sql` (Phase 1)
+
+- **Additive only** — six Navya-owned tables and one audit view; the team's `forecasts`
+  table is not altered, and migrations 001–009 are untouched. The only reference to another
+  owner's object is a foreign key into 010's `navya_forecast_provenance`.
+- **Reversible** — the down migration drops children before parents and touches nothing
+  outside this migration
+- **Seeds nothing.** With an empty database, `navya_domain_availability` reports
+  `present_in_repository = false` for every domain, which is the truth.
+- **Static-checked only.** See §3.
+
 ---
 
-## 3. Data provenance carried end to end
+## 3. Verification status — read this
+
+Migration `010` was **executed** against a local PostgreSQL instance and the result is
+recorded above.
+
+Migration `011` has **not been executed**. No PostgreSQL server or `psql` binary was
+available in the environment where Phase 1 was implemented. It has been **statically
+reviewed** — `ai-service/tests/test_hydro_phase1_migration.py` reads the SQL as text and
+asserts its content: additive-only DDL, reversibility, no team table mutated, the NaN *and*
+infinity rules on a measurement value, the duplicate-identity index, and that the SQL
+vocabularies match the Python ones.
+
+That is a **weaker** claim than 010's and is not to be read as equivalent. A text assertion
+cannot prove the SQL parses. **Anyone applying 011 must run it against a real instance, and
+that run — not the test suite — is the verification.** Until then, treat 011 as unexecuted.
+
+---
+
+## 4. Data provenance carried end to end
 
 | Field | Purpose |
 |---|---|

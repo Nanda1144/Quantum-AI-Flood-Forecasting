@@ -19,6 +19,9 @@ Module map
 | Module | Responsibility |
 | --- | --- |
 | `config` | Environment-driven, validated configuration; every dataset-dependent fact is declared, never guessed. |
+| `domains` | **Phase 1.** Record schemas for each data domain (weather, rainfall, water level, discharge, inflow, flood event, risk score) and the domain registry. Pure stdlib. |
+| `quality` | **Phase 1.** Structural validation and data-quality metadata: issue codes, one-pass reporting, duplicate and conflict detection. Reports; never repairs. Pure stdlib. |
+| `datasets` | **Phase 1.** Dataset descriptors and the domain-coverage matrix. What a dataset is *and what it does not contain*. Pure stdlib. |
 | `preprocessing` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features` | Strictly-causal lag / rolling / rainfall / calendar features and forward-time supervision alignment. |
 | `models` | Executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) plus the documented-but-unimplemented roadmap. |
@@ -30,6 +33,21 @@ Module map
 | `synthetic` | Deterministic SYNTHETIC/DEMO generator, clearly labelled, for runnable demos only. |
 | `training` | End-to-end training, comparison, artifact writing and the CLI entrypoint. |
 | `engine` | `HydroForecastEngine` behind the team's `ForecastEngine` protocol. |
+
+Phase 1 (`domains`, `quality`, `datasets`)
+----------------------------------------
+The first three modules are the data / schema foundation. Importing any of them
+loads nothing outside the standard library — no NumPy, no pandas, no
+scikit-learn — so a schema question never drags the training stack in behind it.
+See `PHASE1_DATA_FOUNDATION.md` for what they do and, more importantly, for what
+they deliberately do not.
+
+(Importing *through* this package still runs `from .synthetic import ...` below,
+which needs NumPy. That is pre-existing and unchanged by Phase 1.)
+
+They are also *additive*: they consume `config`, `contract` and `provenance`
+rather than restating them, so the forecast contract's field names and the
+mandatory data disclaimer each keep exactly one definition in this package.
 
 Importing `engine` is **lazy** so that `app.engines.hydro.config` and friends can be
 imported by tooling without pulling in the team Pydantic contract, and so the
@@ -61,6 +79,42 @@ from .config import (
     SplitSpec,
     TargetSpec,
     load_config,
+)
+from .datasets import (
+    NO_VERIFIED_DATASETS,
+    SCHEMA_VERSION,
+    DatasetCatalog,
+    DatasetDescriptor,
+    DomainCoverage,
+    committed_sample_catalog,
+    coverage_matrix,
+    synthetic_sample_descriptor,
+)
+from .domains import (
+    DATA_DOMAINS,
+    MEASUREMENT_DOMAINS,
+    NOT_AVAILABLE,
+    ColumnBinding,
+    FloodEvent,
+    Measurement,
+    Observation,
+    RiskScoreRecord,
+    SchemaError,
+    domain_spec,
+    observations_from_row,
+)
+from .quality import (
+    ConflictReport,
+    IngestReport,
+    QualityIssue,
+    ValidationReport,
+    check_flood_events,
+    check_observation_collection,
+    check_risk_records,
+    ingest_observations,
+    summarise,
+    validate_observation,
+    validate_observation_payload,
 )
 from .contract import (
     FORECAST_CONTRACT_VERSION,
@@ -95,6 +149,37 @@ __all__ = [
     "FeatureSpec",
     "RiskPolicy",
     "load_config",
+    # Phase 1 — data / schema foundation (pure stdlib, no NumPy/pandas)
+    "DATA_DOMAINS",
+    "MEASUREMENT_DOMAINS",
+    "NOT_AVAILABLE",
+    "ColumnBinding",
+    "FloodEvent",
+    "Measurement",
+    "Observation",
+    "RiskScoreRecord",
+    "SchemaError",
+    "domain_spec",
+    "observations_from_row",
+    "ConflictReport",
+    "IngestReport",
+    "QualityIssue",
+    "ValidationReport",
+    "check_flood_events",
+    "check_observation_collection",
+    "check_risk_records",
+    "ingest_observations",
+    "summarise",
+    "validate_observation",
+    "validate_observation_payload",
+    "DatasetCatalog",
+    "DatasetDescriptor",
+    "DomainCoverage",
+    "NO_VERIFIED_DATASETS",
+    "SCHEMA_VERSION",
+    "committed_sample_catalog",
+    "coverage_matrix",
+    "synthetic_sample_descriptor",
     # contract
     "ForecastOutput",
     "OptimizationHandoff",

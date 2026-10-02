@@ -46,6 +46,9 @@ Three properties drive every decision below.
 | Module | Responsibility |
 | --- | --- |
 | `config.py` | Environment-driven, validated configuration. Every dataset-dependent fact is declared, never guessed. |
+| `domains.py` | **Phase 1.** Record schemas for every data domain, plus the domain registry. Pure stdlib. |
+| `quality.py` | **Phase 1.** Structural validation, stable issue codes, duplicate and conflict detection. Reports; never repairs. Pure stdlib. |
+| `datasets.py` | **Phase 1.** Dataset descriptors and the domain-coverage matrix. Pure stdlib. |
 | `preprocessing.py` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features.py` | Strictly-causal lag / rolling / rainfall / calendar features, and forward-time supervision alignment. |
 | `models.py` | The executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) and the documented-but-unimplemented roadmap. |
@@ -57,6 +60,12 @@ Three properties drive every decision below.
 | `synthetic.py` | The deterministic SYNTHETIC/DEMO generator. |
 | `training.py` | End-to-end train → compare → artifact, plus the CLI entrypoint. |
 | `engine.py` | `HydroForecastEngine` behind the team's `ForecastEngine` Protocol. |
+
+The first three modules are the **Phase 1 data / schema foundation** and are
+documented separately in [`PHASE1_DATA_FOUNDATION.md`](PHASE1_DATA_FOUNDATION.md).
+Importing them loads nothing outside the standard library — no NumPy, no pandas,
+no scikit-learn — and they consume `config`, `contract` and `provenance` rather
+than restating them.
 
 `engine` is imported **lazily** by `__init__.py`, so the factory stays the only
 path that constructs it and tooling can import `config` without pulling in the
@@ -258,6 +267,13 @@ the integration merge, the whole file runs.
 
 ## 10. What is deliberately not here
 
+- **No real hydrological data, and no dataset claiming to be one.**
+  `datasets.committed_sample_catalog()` holds exactly one entry, the committed
+  SYNTHETIC/DEMO sample, and `EMPTY_CATALOG` is the default. No rainfall value,
+  water level, discharge, inflow, station identifier, official threshold,
+  coordinate, population figure or flood event has been invented anywhere in this
+  package. Where a fact is unknown it is `None` or the project's
+  `NOT FOUND IN REPOSITORY — HUMAN / TEAM INPUT REQUIRED` marker.
 - **No LSTM / GRU / QML regressor.** They appear in
   `models.FUTURE_MODEL_ROADMAP` as unimplemented future work. A test asserts
   that no roadmap key is selectable, so the registry cannot claim a model that
