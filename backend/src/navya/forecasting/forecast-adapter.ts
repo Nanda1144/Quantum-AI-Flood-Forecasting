@@ -26,7 +26,7 @@ import type { NavyaForecastRecord, ThresholdPolicy } from './types.ts'
  *
  * Those fields are not on the wire today. Adding them requires a team owner to
  * extend `app/schemas/models.py`, which is team-owned, so the required change is
- * recorded in `TEAM_INTEGRATION_REQUIREMENTS.md` rather than made here.
+ * recorded in `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md` rather than made here.
  *
  * Until then this adapter:
  *

@@ -143,14 +143,57 @@ The three rules that matter, each enforced in code and asserted by tests:
 
 ### Stage 4 — Feature engineering `[MY IMPLEMENTATION]`
 
-`ai-service/app/engines/hydro/features.py`
+`ai-service/app/engines/hydro/feature_registry.py` · `feature_config.py` ·
+`feature_temporal.py` · `feature_pipeline.py`
+(documented in `ai-service/app/engines/hydro/PHASE3_FEATURE_ENGINEERING.md`)
 
-Every feature is **strictly causal**: a feature at time *t* uses only information available at
-or before *t*. Rainfall lags, rolling rainfall aggregates, antecedent level, and cyclical
-time encodings are all produced with an explicit lag.
+Stage 3's output — validated, deduplicated, unit-aware, chronologically split records —
+becomes a feature dataset whose every column is a function of the past.
 
-The realized synthetic run produced **23 features**. This is a property of the synthetic
-generator's configuration — it is not a statement about any real basin.
+Every feature is **strictly causal**: `Feature(T)` depends only on observations at or before
+`T`. Accumulation and rolling windows are `(cutoff - window, cutoff]` — open on the left,
+closed on the right — so a window of width `w` holds exactly `w / base_interval` readings,
+and it agrees with `pandas.Series.rolling(w)` slot for slot. Windows are **never centered and
+never reach forward**. Forcings (rainfall, temperature, humidity) are read at `T`; state
+quantities (water level, discharge, inflow) are read at `T - 1`, because `T` is what is being
+predicted.
+
+Targets are separated structurally from features: `target = value(T + H)`, features use
+`<= T`, and each row carries `values`, `targets`, `absent_reasons` and `target_instants` as
+distinct fields, so `feature_matrix()` cannot reach a target.
+
+**A feature is either computed or declared unavailable with a recorded reason.** There is no
+third category, and nothing is ever imputed: a hole in a series stays a hole, and Phase 3
+applies no forward-fill. Warm-up (the series had not started when the window opened) is
+reported separately from `missing_source` (the series was running; the reading is absent),
+because the first is fixed by collecting more history and the second by fixing a sensor.
+
+A feature is computed only from its own entity's history and only from its own
+`location|domain|quantity` measurement key, so a rainfall lag cannot become a water-level
+lag. Nine features are declared unbuildable for any input and are never fabricated — six
+static ones with no source field anywhere, and three derived ones needing a relationship
+nobody has established, including **discharge inferred from a water level**, which would
+require a rating curve that does not exist in this repository.
+
+The default registry declares **56 features**. The realized synthetic run built **32 of
+them**; the other 24 — `discharge_*`, `temperature_*`, `humidity_*` — have no source in the
+committed sample, which carries water level, inflow and rainfall only. This is a property of
+the synthetic generator's configuration, not a statement about any real basin.
+
+Every feature carries lineage naming its source, window, statistic and unit; every target
+carries lineage recording `available_at_prediction_time = False`. Column order is registry
+order and row order is `(entity, instant)`, so the dataset is byte-identical under input
+permutation.
+
+An eight-check leakage audit runs on every build, plus `audit_point_in_time`, which rebuilds
+the dataset with all post-origin data deleted and reports any feature whose value changed. A
+feature that changes has read the future, whatever the window arithmetic says.
+
+**Stage 4 does not train a model.** No model is selected, fitted, tuned or evaluated; no
+accuracy metric is reported; no scaler, imputer or encoder is fitted on these rows. That
+belongs after the split.
+
+All data at this stage remains **SYNTHETIC/DEMO** and is labelled as such throughout.
 
 ### Stage 5 — Model input matrix `[MY IMPLEMENTATION]`
 

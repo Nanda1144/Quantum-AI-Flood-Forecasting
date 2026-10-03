@@ -71,7 +71,7 @@ produce the false claim.
 
 Each needs a team owner to extend `backend/src/types/contract.ts` and
 `ai-service/app/schemas/models.py`. See
-`docs/navya-forecast/TEAM_INTEGRATION_REQUIREMENTS.md`. A test asserts the list
+`01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md`. A test asserts the list
 and the handoff agree, so the list cannot silently go stale.
 
 ---

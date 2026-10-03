@@ -61,6 +61,10 @@ Three properties drive every decision below.
 | `preprocess_units.py` | **Phase 2.** Exact documented unit conversions. Guesses nothing. Pure stdlib. |
 | `preprocess_temporal.py` | **Phase 2.** Timestamps, ordering, cadence, gap grids, gap policy, right-labelled resampling, chronological splitting. Pure stdlib. |
 | `preprocess_pipeline.py` | **Phase 2.** The orchestrator, returning records plus a machine-readable report. Pure stdlib. |
+| `feature_registry.py` | **Phase 3.** The feature vocabulary: definitions, naming, entity scopes, lineage, and the catalogue of features that cannot honestly be built. Pure stdlib. |
+| `feature_config.py` | **Phase 3.** Every feature policy and its refusal rules — cutoffs, coverage, missing, warm-up, units, targets, strictness. Pure stdlib. |
+| `feature_temporal.py` | **Phase 3.** Causal window arithmetic: lags, changes, accumulation, intensity, rolling statistics, calendar terms and target alignment. Pure stdlib. |
+| `feature_pipeline.py` | **Phase 3.** The orchestrator: records in, a model-ready feature dataset plus a quality report out. Pure stdlib. |
 | `preprocessing.py` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features.py` | Strictly-causal lag / rolling / rainfall / calendar features, and forward-time supervision alignment. |
 | `models.py` | The executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) and the documented-but-unimplemented roadmap. |
@@ -87,15 +91,31 @@ require the training stack. They add no second validation framework (Phase 1's
 `phase1_quality`) and no second provenance record.
 
 **Phase 2 does no feature engineering at all.** No lags, no rolling windows, no
-rainfall accumulation, no flood-risk arithmetic — those belong to `features`
-(Phase 3) and `risk`.
+rainfall accumulation, no flood-risk arithmetic — those belong to `features` and
+the Phase 3 modules below, and to `risk`.
+
+The four `feature_*` modules are **Phase 3**, documented in
+[`PHASE3_FEATURE_ENGINEERING.md`](PHASE3_FEATURE_ENGINEERING.md). Like Phases 1
+and 2 they are pure standard library, for the same reason. They consume Phase 2's
+`PreprocessingResult` as the sole input contract and add no second validation,
+quality, provenance, unit or splitting framework.
+
+**Phase 3 does not train models.** It selects, fits, tunes and evaluates nothing
+and reports no accuracy metric. It fits no imputer or scaler either — that belongs
+after the split, and fitting either on the full series would put test-period
+statistics into the model's inputs.
+
+`features.py` above is the **pre-Phase-1** wide-`DataFrame` feature layer still
+consumed by `training.py`, `engine.py` and two existing test modules. Phase 3
+neither modifies nor replaces it: the two coexist, both are covered by the full
+suite, and the window conventions are cross-checked against each other.
 
 `engine` is imported **lazily** by `__init__.py`, so the factory stays the only
 path that constructs it and tooling can import `config` without pulling in the
-team Pydantic contract. The Phase 2 entry points are lazy for the same effect:
-eagerly importing `preprocess` here would drag NumPy in through `synthetic` and
-make the standard-library-only claim reachable only by importing the submodule
-directly.
+team Pydantic contract. The Phase 2 and Phase 3 entry points are lazy for the
+same effect: eagerly importing `preprocess` or `build_features` here would drag
+NumPy in through `synthetic` and make the standard-library-only claim reachable
+only by importing the submodule directly.
 
 ---
 
@@ -299,7 +319,20 @@ and therefore covered by the same skip guard:
 | `tests/test_hydro_preprocess_resample_split.py` | resampling, splitting, leakage |
 | `tests/test_hydro_preprocess_pipeline.py` | end-to-end and guarantees |
 
-Current full-suite result: **771 passed, 1 skipped** (597 passed before Phase 2).
+Phase 3 adds 222 tests across four modules, all named `test_hydro_feature_*` and
+therefore covered by the same skip guard:
+
+| Module | Groups |
+| --- | --- |
+| `tests/test_hydro_feature_registry.py` | definitions, naming, scopes, lineage, the unbuildable catalogue |
+| `tests/test_hydro_feature_config.py` | every policy, its default, and its refusal rules |
+| `tests/test_hydro_feature_temporal.py` | window arithmetic, cutoffs, warm-up, and a `pandas.Series.rolling` cross-check |
+| `tests/test_hydro_feature_pipeline.py` | leakage 1–7, determinism, availability, the Phase 4 contract, AST scope guards |
+
+Current full-suite result: **993 passed, 1 skipped** (771 passed before Phase 3,
+597 before Phase 2).
+
+No existing test was weakened, modified or deleted in Phases 2 or 3.
 
 ---
 

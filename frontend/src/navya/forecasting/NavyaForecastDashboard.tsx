@@ -39,7 +39,7 @@ interface Props {
  * This component is **not** registered on any team route. `App.tsx` and
  * `pages/AIAnalyticsDashboard.tsx` are team-owned and are not modified, so nothing
  * on the running application changes until a team owner mounts it. See
- * `docs/navya-forecast/TEAM_INTEGRATION_REQUIREMENTS.md`.
+ * `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md`.
  *
  * ## Reading order is deliberate
  *

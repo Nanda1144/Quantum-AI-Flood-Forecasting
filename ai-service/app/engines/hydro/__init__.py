@@ -26,6 +26,10 @@ Module map
 | `preprocess_units` | **Phase 2.** Exact documented unit conversions. Guesses nothing; an unrecognised unit becomes `UNDETERMINED` and the value is kept. Pure stdlib. |
 | `preprocess_temporal` | **Phase 2.** Timestamps, ordering, cadence inference, gap grids, gap policy, right-labelled resampling, chronological splitting. Pure stdlib. |
 | `preprocess_pipeline` | **Phase 2.** The orchestrator: runs the stages in order and returns records plus a machine-readable report. Pure stdlib. |
+| `feature_registry` | **Phase 3.** The feature vocabulary: definitions, naming, entity scopes, lineage and the catalogue of features that cannot honestly be built. Pure stdlib. |
+| `feature_config` | **Phase 3.** Every feature policy and its refusal rules — cutoffs, coverage, missing, warm-up, units, targets, strictness. Pure stdlib. |
+| `feature_temporal` | **Phase 3.** Causal window arithmetic: lags, changes, accumulation, intensity, rolling statistics, calendar terms and target alignment. Pure stdlib. |
+| `feature_pipeline` | **Phase 3.** The orchestrator: records in, a model-ready feature dataset plus a quality report out. Pure stdlib. |
 | `preprocessing` | Validation, timestamp parsing, ordering, duplicate handling, missing-value policy, chronological split, train-fitted scaler/imputer. |
 | `features` | Strictly-causal lag / rolling / rainfall / calendar features and forward-time supervision alignment. |
 | `models` | Executable model registry (NumPy linear + ridge; optional scikit-learn ensembles) plus the documented-but-unimplemented roadmap. |
@@ -74,6 +78,34 @@ and `SplitBoundaries` still have exactly one definition each.
 The Phase 2 entry point `preprocess` is resolved **lazily** (see `_LAZY` below)
 for the same reason `engine` is: importing it must not pull NumPy in through
 `synthetic`.
+
+Phase 3 (`feature_registry`, `feature_config`, `feature_temporal`,
+`feature_pipeline`)
+-----------------------------------------------------------------------------
+Phase 3 turns Phase 2's records into a feature dataset a model can be fitted on:
+causal lags, changes, rolling statistics, rainfall accumulations and intensities,
+calendar terms, and forward-time targets — each with its own column, unit and
+lineage. Like Phases 1 and 2 it is pure standard library: a "what does this column
+mean" question should not require the training stack, and Phase 3 adds no
+dependency in order to be useful.
+
+See `PHASE3_FEATURE_ENGINEERING.md`. The headline is what it does **not** do:
+**PHASE 3 DOES NOT TRAIN MODELS.** It fits no parameter, selects no algorithm,
+scores no prediction and computes no RMSE, MAE or R². Those belong to `models`,
+`training` and `evaluation`, and Phase 3 has no way to reach them.
+
+Phase 3 adds no second feature-engineering system. The pre-Phase-1 pandas layer in
+`features` remains, untouched, for `training` and `engine`; `feature_*.py` is a
+parallel record-based path for the same reason `preprocess_*.py` sits beside
+`preprocessing.py`. Phase 3 also reuses Phase 2 rather than re-implementing it —
+cadence comes from `preprocess_temporal.infer_base_interval`, units from
+`preprocess_units`, splits from `preprocess_pipeline` — and imputes nothing, since
+fitting an imputer belongs to Phase 4 on training rows only.
+
+Its hard rule is point-in-time correctness: `Feature(T)` depends only on
+observations at or before `T`. That is enforced structurally (every operation is a
+slice ending at a cutoff), checked at runtime against the produced rows, and
+verified behaviourally by deleting the future and confirming no feature changes.
 
 Importing `engine` is **lazy** so that `app.engines.hydro.config` and friends can be
 imported by tooling without pulling in the team Pydantic contract, and so the
@@ -215,6 +247,16 @@ __all__ = [
     "conservative_config",
     "preprocess",
     "strict_config",
+    # Phase 3 — feature engineering (pure stdlib; resolved lazily, see `_LAZY`)
+    "FeatureConfig",
+    "FeatureConfigError",
+    "FeatureError",
+    "FeatureResult",
+    "FeatureQualityReport",
+    "ModelReadyDataset",
+    "build_features",
+    "conservative_feature_config",
+    "strict_feature_config",
     # contract
     "ForecastOutput",
     "OptimizationHandoff",
@@ -250,11 +292,11 @@ __all__ = [
 #: The engine is lazy because importing it pulls in the team Pydantic contract,
 #: and only `app.engines.factory.get_engine()` should build it.
 #:
-#: Phase 2 is lazy because it is standard-library-only and says so: exposing
-#: `preprocess` here as an eager import would make `from app.engines.hydro import
-#: preprocess` load NumPy via `synthetic`, and the purity claim would only be
-#: reachable by importing the submodule directly. Lazy resolution keeps
-#: `from app.engines.hydro import preprocess` honest.
+#: Phase 2 and Phase 3 are lazy because they are standard-library-only and say so:
+#: exposing `preprocess` or `build_features` here as eager imports would make
+#: `from app.engines.hydro import build_features` load NumPy via `synthetic`, and the
+#: purity claim would only be reachable by importing the submodule directly. Lazy
+#: resolution keeps `from app.engines.hydro import build_features` honest.
 _LAZY: dict[str, tuple[str, str]] = {
     "HydroForecastEngine": (".engine", "HydroForecastEngine"),
     "EngineNotReadyError": (".engine", "EngineNotReadyError"),
@@ -266,11 +308,25 @@ _LAZY: dict[str, tuple[str, str]] = {
     "PreprocessConfigError": (".preprocess_config", "PreprocessConfigError"),
     "conservative_config": (".preprocess_config", "conservative_config"),
     "strict_config": (".preprocess_config", "strict_config"),
+    "build_features": (".feature_pipeline", "build_features"),
+    "FeatureError": (".feature_pipeline", "FeatureError"),
+    "FeatureResult": (".feature_pipeline", "FeatureResult"),
+    "FeatureQualityReport": (".feature_pipeline", "FeatureQualityReport"),
+    "ModelReadyDataset": (".feature_pipeline", "ModelReadyDataset"),
+    "FeatureConfig": (".feature_config", "FeatureConfig"),
+    "FeatureConfigError": (".feature_config", "FeatureConfigError"),
+    "conservative_feature_config": (".feature_config", "conservative_config"),
+    "strict_feature_config": (".feature_config", "strict_config"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    """PEP 562 lazy attribute access for the engine and Phase 2 surfaces."""
+    """PEP 562 lazy attribute access for the engine and the Phase 2 / Phase 3 surfaces.
+
+    The lazy map holds entry points and their result types, not every constant:
+    a caller who wants a policy constant reaches for the module that declares it,
+    where the documentation lives beside the code that uses it.
+    """
     target = _LAZY.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

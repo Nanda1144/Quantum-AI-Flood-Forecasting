@@ -36,7 +36,7 @@
  * carried by the running AI contract. They require a team owner to extend
  * `ai-service/app/schemas/models.py`. Until then the normalizer records them as
  * `null` / `'unknown'` rather than deriving them — see
- * `docs/navya-forecast/TEAM_INTEGRATION_REQUIREMENTS.md`.
+ * `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md`.
  */
 
 import { fetchJson } from '../../services/aiService'

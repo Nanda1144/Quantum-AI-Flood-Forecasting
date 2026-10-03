@@ -23,7 +23,7 @@
  *   backward-compatible; usable right now.
  * - `ProposedForecastHandoff` — the full record Navya produces. **Not**
  *   consumable today. Every field beyond the existing payload needs a
- *   team-owner change, listed in `TEAM_INTEGRATION_REQUIREMENTS.md`.
+ *   team-owner change, listed in `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md`.
  *
  * Nothing in this file is mounted into a team route. It is a declared contract
  * plus the pure functions that build it, so the mapping can be reviewed and
@@ -196,7 +196,7 @@ export interface ExistingOptimizationPayload {
 /**
  * The full proposed handoff. **Only the `ExistingOptimizationPayload` subset is
  * consumable today.** The remaining fields require the team-owner changes
- * enumerated in `TEAM_INTEGRATION_REQUIREMENTS.md`.
+ * enumerated in `01_Flood_Forecasting/TEAM_INTEGRATION_REQUIREMENTS.md`.
  */
 export interface ProposedForecastHandoff {
   contract_version: string
