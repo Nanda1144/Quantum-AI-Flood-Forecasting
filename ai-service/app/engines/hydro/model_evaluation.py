@@ -94,9 +94,46 @@ REPORTABLE_METRICS: tuple[str, ...] = COMPUTABLE_METRICS
 
 #: Metrics where a lower value is better. Stated explicitly so a reader never has
 #: to infer direction from the metric's name.
-LOWER_IS_BETTER: frozenset[str] = frozenset({"mae", "rmse", "nse", "peak_absolute_error"})
+LOWER_IS_BETTER: frozenset[str] = frozenset({"mae", "rmse", "peak_absolute_error"})
+#: Metrics where a higher value is better. `nse` was previously listed under
+#: `LOWER_IS_BETTER`, which is backwards: Nash-Sutcliffe efficiency is 1.0 for a
+#: perfect forecast, 0.0 for the mean, and negative for anything worse than the
+#: mean, so a *lower* NSE is a *worse* model. Ranking on it ascending would select
+#: the worst candidate that produced a number.
+HIGHER_IS_BETTER: frozenset[str] = frozenset({"r2", "nse"})
 #: `bias` is two-sided — zero is the goal, not "lower" — so it is excluded above.
 TWO_SIDED_METRICS: frozenset[str] = frozenset({"bias"})
+
+
+def metric_direction(metric: str) -> str:
+    """Whether a higher or a lower value of `metric` is the better model.
+
+    Returns ``"higher"``, ``"lower"``, or raises. `bias` is deliberately not
+    rankable: zero is the goal, and "the lowest bias" would happily select the
+    model that under-predicts hardest. Every other reportable metric has a
+    direction, and it is looked up here rather than inferred at the call site.
+    """
+    if metric in LOWER_IS_BETTER:
+        return "lower"
+    if metric in HIGHER_IS_BETTER:
+        return "higher"
+    if metric in TWO_SIDED_METRICS:
+        raise ModelEvaluationError(
+            f"{metric!r} is two-sided and cannot be ranked; choose a metric where one end of the "
+            "range is the goal"
+        )
+    raise ModelEvaluationError(
+        f"{metric!r} is not a reportable metric; known metrics are {list(REPORTABLE_METRICS)}"
+    )
+
+
+#: The full direction table, so a reader - or Phase 5's selector - can see all three
+#: cases in one place instead of inferring membership from two sets and a raise.
+METRIC_DIRECTIONS: Mapping[str, str] = {
+    **{metric: "lower" for metric in sorted(LOWER_IS_BETTER)},
+    **{metric: "higher" for metric in sorted(HIGHER_IS_BETTER)},
+    **{metric: "unrankable" for metric in sorted(TWO_SIDED_METRICS)},
+}
 
 #: Rows whose |actual| is below this are excluded from the opt-in percentage
 #: error, and the count is reported.
@@ -764,22 +801,20 @@ def build_comparison(
 
 
 def _select(rows: Sequence[ComparisonRow], *, selection_metric: str, selection_split: str, exclude: str) -> str | None:
-    """The lowest `selection_metric` on `selection_split`, descriptively.
+    """The best `selection_metric` on `selection_split`, descriptively.
 
     Excludes the baseline from being "selected": the persistence baseline is a
     yardstick, and a run that selected it has learned that nothing beat "assume no
     change", which is a finding worth stating rather than a winner to announce.
+
+    "Best" is resolved through `metric_direction` rather than by sorting ascending
+    unconditionally. The previous version always took the lowest value, which was
+    right for `rmse` and wrong for `r2` and `nse` - ranking those ascending
+    selects the *worst* candidate that produced a number, and reports it as the
+    winner. Ties break on `model_id` so two runs that score identically still
+    produce one deterministic answer.
     """
-    if selection_metric not in REPORTABLE_METRICS:
-        raise ModelEvaluationError(
-            f"selection_metric {selection_metric!r} is not reportable; known metrics are "
-            f"{list(REPORTABLE_METRICS)}"
-        )
-    if selection_metric in TWO_SIDED_METRICS:
-        raise ModelEvaluationError(
-            f"{selection_metric!r} is two-sided and cannot be ranked; choose a metric where "
-            "lower is better"
-        )
+    direction = metric_direction(selection_metric)
     candidates = [
         row
         for row in rows
@@ -791,14 +826,19 @@ def _select(rows: Sequence[ComparisonRow], *, selection_metric: str, selection_s
     usable = [(row, value) for row, value in scored if value is not None]
     if not usable:
         return None
-    usable.sort(key=lambda item: (item[1], item[0].model_id))
+    if direction == "lower":
+        usable.sort(key=lambda item: (item[1], item[0].model_id))
+    else:
+        usable.sort(key=lambda item: (-item[1], item[0].model_id))
     return usable[0][0].model_id
 
 
 __all__ = [
     "COMPARISON_COLUMNS",
     "COMPARISON_FIELDS",
+    "HIGHER_IS_BETTER",
     "LOWER_IS_BETTER",
+    "METRIC_DIRECTIONS",
     "PERCENT_DENOMINATOR_FLOOR",
     "PERCENT_ERROR_UNAVAILABLE_REASON",
     "REPORTABLE_METRICS",

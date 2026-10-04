@@ -66,7 +66,28 @@ from .provenance import ProvenanceRecord, utc_now_iso
 #: Bumped whenever the manifest layout changes incompatibly. Distinct from
 #: `artifacts.ARTIFACT_FORMAT_VERSION`, which versions the *estimator* payload;
 #: conflating the two would mean a Phase 4 metadata change broke artifact loading.
-ARTIFACT_MANIFEST_VERSION = "navya-phase4-manifest/v1"
+#:
+#: v2 adds `feature_columns` to the canonical (and therefore written) structure, so
+#: a manifest now carries the ordered list its own order-sensitive
+#: `feature_digest` is computed over. Under v1 the digest could not be re-verified
+#: from the file at all, which meant the serving path could not check the feature
+#: contract of anything it loaded from disk. Phase 5 refuses a v1 file for that
+#: reason rather than accepting a checksum it cannot confirm.
+ARTIFACT_MANIFEST_VERSION = "navya-phase4-manifest/v2"
+
+#: Versions this codebase can read. v1 is listed so the error for an old file says
+#: *why* it is refused instead of merely that it is a different version.
+LEGACY_MANIFEST_VERSION = "navya-phase4-manifest/v1"
+
+#: The bundle index `write_manifests` emits. Named as a constant because Phase 5's
+#: directory loader has to find the same file, and a filename written twice in two
+#: modules is a filename that will eventually disagree with itself.
+#:
+#: The index matters to Phase 5 for one specific reason: a dependency-blocked model
+#: has `artifact_status='not_written'` and therefore no manifest file, so it is
+#: recorded *only* here. Reading the files alone would make a blocked model
+#: disappear instead of reporting itself.
+INDEX_FILENAME = "phase4-artifacts.index.json"
 
 #: Where fitted weights are meant to live, and why they are not in the repository.
 WEIGHT_STORAGE_POLICY = (
@@ -151,13 +172,20 @@ class TrainingFingerprint:
         return payload
 
     def to_canonical(self) -> dict[str, Any]:
-        """The exact structure that is hashed. Lists, not tuples, and sorted keys."""
+        """The exact structure that is hashed. Lists, not tuples, and sorted keys.
+
+        `feature_columns` keeps the model's column order rather than being sorted.
+        Sorting it here made the hashed structure disagree with the
+        order-sensitive `feature_digest` sitting next to it, so the fingerprint
+        described two different feature matrices - the one the model saw, and its
+        alphabetisation - while appearing to name only one.
+        """
         return {
             "model_contract_version": self.model_contract_version,
             "feature_contract_version": self.feature_contract_version,
             "target": self.target,
             "horizon": self.horizon,
-            "feature_columns": sorted(self.feature_columns),
+            "feature_columns": list(self.feature_columns),
             "feature_digest": self.feature_digest,
             "split_policy": self.split_policy,
             "scaler_policy": self.scaler_policy,
@@ -294,7 +322,15 @@ class ArtifactManifest:
         return self.fingerprint.digest if self.fingerprint is not None else None
 
     def to_canonical(self) -> dict[str, Any]:
-        """The structure that is hashed. Excludes `created_at` and the digest."""
+        """The structure that is hashed. Excludes `created_at` and the digest.
+
+        `feature_columns` is included deliberately. The feature digest is taken over
+        the *ordered* list, so a manifest that recorded the digest without the list
+        could not be verified by anyone reading it back: the only column list in the
+        file was the fingerprint's, and that one is a set rendered in sorted order,
+        which hashes differently from the order the model actually saw. A checksum
+        that cannot be checked against the thing it checksums is decoration.
+        """
         return {
             "manifest_version": self.manifest_version,
             "model_contract_version": self.model_contract_version,
@@ -312,6 +348,7 @@ class ArtifactManifest:
             "artifact_policy": self.artifact_policy,
             "weight_stored_in_repository": self.weight_stored_in_repository,
             "feature_count": self.feature_count,
+            "feature_columns": list(self.feature_columns),
             "feature_digest": self.feature_digest,
             "dataset_reference": self.dataset_reference,
             "dataset_checksum": self.dataset_checksum,
@@ -701,7 +738,7 @@ def write_manifests(manifests: ArtifactManifests, directory: str) -> tuple[str, 
         path = os.path.join(directory, f"{safe}.manifest.json")
         _atomic_write(path, manifest.to_json())
         written.append(path)
-    index = os.path.join(directory, "phase4-artifacts.index.json")
+    index = os.path.join(directory, INDEX_FILENAME)
     _atomic_write(index, manifests.to_json())
     written.append(index)
     return tuple(written)
@@ -758,6 +795,8 @@ def registry_manifest_rows() -> list[dict[str, Any]]:
 
 __all__ = [
     "ARTIFACT_MANIFEST_VERSION",
+    "INDEX_FILENAME",
+    "LEGACY_MANIFEST_VERSION",
     "NONDETERMINISTIC_FIELDS",
     "WEIGHT_STORAGE_POLICY",
     "ArtifactManifest",

@@ -517,28 +517,43 @@ def invalid_request(request: Any, reason: str) -> HandoffResult:
 # --------------------------------------------------------------------------- #
 
 
-def _horizon_seconds(horizon: str) -> float | None:
+def horizon_seconds(horizon: str) -> float | None:
     """Parse Phase 3's horizon label into seconds, or `None` if it is not one.
 
-    Phase 3 emits labels like `6h`. Anything else is left as a string rather than
+    Phase 3 emits labels like `6h`. Anything else is left as `None` rather than
     guessed at: a horizon this function cannot read must not silently become zero,
     which would put the prediction timestamp on top of the source timestamp.
+
+    **Public because Phase 5 needs it without a training run.** Serving a forecast
+    from a loaded artifact has no `RunResult` to hand to `_prediction_instant`, so
+    without this the prediction timestamp could only be produced as a side effect
+    of the Phase 4 handoff — meaning a deployment that loads artifacts from disk
+    would withhold the timestamp for a reason that has nothing to do with the
+    forecast. One parser, exported, rather than one parser plus a copy.
+
+    A non-positive span is `None`, not a negative number of seconds. `-6h` parses
+    arithmetically, and accepting it puts the prediction timestamp *before* the
+    origin — a forecast for the past, stamped as though it were a forecast. That
+    reads as a correct answer to anyone who checks only that a timestamp exists, and
+    it is worse than the unparseable-label case the `None` above is there for.
     """
     text = str(horizon).strip().lower()
     if not text:
         return None
     try:
         if text.endswith("h"):
-            return float(text[:-1]) * 3600.0
-        if text.endswith("m"):
-            return float(text[:-1]) * 60.0
-        if text.endswith("s"):
-            return float(text[:-1])
-        if text.endswith("d"):
-            return float(text[:-1]) * 86400.0
+            seconds = float(text[:-1]) * 3600.0
+        elif text.endswith("m"):
+            seconds = float(text[:-1]) * 60.0
+        elif text.endswith("s"):
+            seconds = float(text[:-1])
+        elif text.endswith("d"):
+            seconds = float(text[:-1]) * 86400.0
+        else:
+            return None
     except ValueError:
         return None
-    return None
+    return seconds if seconds > 0.0 else None
 
 
 def _prediction_instant(request: ForecastRequest) -> tuple[str | None, str | None]:
@@ -548,7 +563,7 @@ def _prediction_instant(request: ForecastRequest) -> tuple[str | None, str | Non
     prediction timestamp computed from a guess would be worse than no timestamp at
     all — it would look traceable.
     """
-    seconds = _horizon_seconds(request.horizon)
+    seconds = horizon_seconds(request.horizon)
     if seconds is None:
         return _iso(request.origin_instant), None
     return _iso(request.origin_instant), _iso(
@@ -907,6 +922,7 @@ __all__ = [
     "Uncertainty",
     "build_handoff",
     "handoff_contract_description",
+    "horizon_seconds",
     "invalid_request",
     "residual_sigma_from",
     "to_forecast_output",
