@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import platform
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -264,7 +264,13 @@ class ProvenanceRecord:
         """JSON-serialisable mapping. Unknown values are emitted as `null`."""
         payload = asdict(self)
         payload["feature_list"] = list(self.feature_list)
-        payload["split"] = asdict(self.split)
+        # `split` is typed as `SplitBoundaries`, but a record rebuilt from a
+        # serialised one - which is what Phase 6 does when it carries a forecast's
+        # provenance forward - carries a plain mapping instead, because that is what
+        # came off the wire. Both are accepted here. `asdict()` on a mapping raises
+        # `TypeError`, and a serialiser that crashes on valid input is worse than one
+        # that has to handle two shapes.
+        payload["split"] = asdict(self.split) if is_dataclass(self.split) else dict(self.split)
         payload["software_environment"] = dict(self.software_environment)
         if self.evaluation_metrics is not None:
             payload["evaluation_metrics"] = dict(self.evaluation_metrics)
