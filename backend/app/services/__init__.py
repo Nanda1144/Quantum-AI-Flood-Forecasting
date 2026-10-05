@@ -6,6 +6,7 @@ from app.services.sensor_service import (
     get_dashboard_summary,
     seed_initial_sensors_and_data
 )
+from app.services.simulation_service import simulation_engine
 
 __all__ = [
     "evaluate_risk_level",
@@ -14,5 +15,6 @@ __all__ = [
     "get_latest_sensor_readings",
     "get_all_sensors",
     "get_dashboard_summary",
-    "seed_initial_sensors_and_data"
+    "seed_initial_sensors_and_data",
+    "simulation_engine"
 ]

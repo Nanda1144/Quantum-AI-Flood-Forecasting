@@ -58,3 +58,35 @@ CREATE TABLE IF NOT EXISTS processed_sensor_data (
 CREATE INDEX IF NOT EXISTS idx_processed_sensor_data_sensor_id ON processed_sensor_data(sensor_id);
 CREATE INDEX IF NOT EXISTS idx_processed_sensor_data_status ON processed_sensor_data(status);
 CREATE INDEX IF NOT EXISTS idx_processed_sensor_data_processed_at ON processed_sensor_data(processed_at DESC);
+
+-- -------------------------------------------------------------
+-- Table: simulation_sessions
+-- Tracks simulation engine sessions and active scenario modes
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS simulation_sessions (
+    id SERIAL PRIMARY KEY,
+    scenario VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'RUNNING',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    stopped_at TIMESTAMP WITH TIME ZONE NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_simulation_sessions_status ON simulation_sessions(status);
+
+-- -------------------------------------------------------------
+-- Table: simulation_logs
+-- Stores generated telemetry logs produced by simulation engine
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS simulation_logs (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES simulation_sessions(id) ON DELETE CASCADE,
+    sensor_id INTEGER NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
+    water_level DOUBLE PRECISION NOT NULL,
+    rainfall DOUBLE PRECISION NOT NULL,
+    flow_rate DOUBLE PRECISION NOT NULL,
+    generated_risk VARCHAR(20) NOT NULL,
+    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_simulation_logs_session_id ON simulation_logs(session_id);
+CREATE INDEX IF NOT EXISTS idx_simulation_logs_generated_at ON simulation_logs(generated_at DESC);

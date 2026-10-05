@@ -3,27 +3,45 @@ import Header from './components/Header';
 import DashboardCards from './components/DashboardCards';
 import SensorTable from './components/SensorTable';
 import IngestModal from './components/IngestModal';
-import { fetchDashboardSummary, seedSampleData } from './services/api';
+import SimulationControlPanel from './components/SimulationControlPanel';
+import SimulationAnalyticsCard from './components/SimulationAnalyticsCard';
+import { 
+  fetchDashboardSummary, 
+  seedSampleData,
+  fetchSimulationStatus,
+  fetchSimulationAnalytics,
+  startSimulation,
+  stopSimulation
+} from './services/api';
 import { AlertCircle, Waves, CheckCircle2 } from 'lucide-react';
 
 function App() {
   const [summary, setSummary] = useState(null);
+  const [simStatus, setSimStatus] = useState(null);
+  const [simAnalytics, setSimAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSimProcessing, setIsSimProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [countdown, setCountdown] = useState(10);
+  const [countdown, setCountdown] = useState(5); // 5s auto refresh cycle
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [notification, setNotification] = useState(null);
 
   const loadData = useCallback(async (showLoader = false) => {
     if (showLoader) setIsRefreshing(true);
     try {
-      const data = await fetchDashboardSummary();
-      setSummary(data);
+      const [dashData, simStat, simAna] = await Promise.all([
+        fetchDashboardSummary(),
+        fetchSimulationStatus(),
+        fetchSimulationAnalytics()
+      ]);
+      setSummary(dashData);
+      setSimStatus(simStat);
+      setSimAnalytics(simAna);
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch dashboard summary:', err);
+      console.error('Failed to fetch platform dashboard data:', err);
       setError('Unable to connect to FastAPI backend server. Ensure backend is running at http://localhost:8000.');
     } finally {
       setLoading(false);
@@ -36,7 +54,7 @@ function App() {
     loadData(true);
   }, [loadData]);
 
-  // Auto Refresh 10 second timer
+  // Auto Refresh 5 second timer to match simulation generator loop
   useEffect(() => {
     if (!autoRefresh) return;
 
@@ -44,7 +62,7 @@ function App() {
       setCountdown((prev) => {
         if (prev <= 1) {
           loadData(false);
-          return 10;
+          return 5;
         }
         return prev - 1;
       });
@@ -54,8 +72,38 @@ function App() {
   }, [autoRefresh, loadData]);
 
   const handleManualRefresh = () => {
-    setCountdown(10);
+    setCountdown(5);
     loadData(true);
+  };
+
+  const handleStartSimulation = async (scenario) => {
+    try {
+      setIsSimProcessing(true);
+      const res = await startSimulation(scenario);
+      setSimStatus(res);
+      showNotification(`Flood Simulation started in '${scenario}' scenario mode!`);
+      await loadData(false);
+    } catch (err) {
+      console.error('Failed to start simulation:', err);
+      showNotification('Failed to start simulation scenario.', 'error');
+    } finally {
+      setIsSimProcessing(false);
+    }
+  };
+
+  const handleStopSimulation = async () => {
+    try {
+      setIsSimProcessing(true);
+      const res = await stopSimulation();
+      setSimStatus(res);
+      showNotification('Flood Simulation engine stopped.');
+      await loadData(false);
+    } catch (err) {
+      console.error('Failed to stop simulation:', err);
+      showNotification('Failed to stop simulation.', 'error');
+    } finally {
+      setIsSimProcessing(false);
+    }
   };
 
   const handleSeedData = async () => {
@@ -119,10 +167,21 @@ function App() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4 text-slate-500">
             <Waves className="h-10 w-10 text-cyan-500 animate-bounce" />
-            <p className="text-sm font-medium">Connecting to Quantum-AI Telemetry Stream...</p>
+            <p className="text-sm font-medium">Connecting to Quantum-AI Telemetry & Simulation Stream...</p>
           </div>
         ) : (
           <>
+            {/* Flood & Sensor Simulation Engine Control Panel */}
+            <SimulationControlPanel 
+              simStatus={simStatus}
+              onStartSimulation={handleStartSimulation}
+              onStopSimulation={handleStopSimulation}
+              isProcessing={isSimProcessing}
+            />
+
+            {/* Simulation Audit Analytics Card */}
+            <SimulationAnalyticsCard analytics={simAnalytics} />
+
             {/* Metric Summary Cards */}
             <DashboardCards summary={summary} />
 
@@ -172,7 +231,7 @@ function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-900 py-4 text-center text-xs text-slate-600 font-mono">
-        Quantum-AI Flood Forecasting Platform &bull; Sensor Data Management Module &bull; Production v1.0.0
+        Quantum-AI Flood Forecasting Platform &bull; Sensor Data Management & Simulation Module &bull; Production v1.1.0
       </footer>
 
     </div>

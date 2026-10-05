@@ -7,8 +7,12 @@ from app.schemas.sensor import SensorResponse
 from app.schemas.sensor_data import SensorIngestPayload, SensorDataResponse
 from app.schemas.dashboard import DashboardSummaryResponse
 from app.services import sensor_service
+from app.api.simulation_routes import router as simulation_router
 
 router = APIRouter()
+
+# Include simulation engine sub-router
+router.include_router(simulation_router)
 
 @router.post(
     "/live-sensor",

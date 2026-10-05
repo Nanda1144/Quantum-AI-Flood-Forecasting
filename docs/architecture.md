@@ -2,58 +2,52 @@
 
 ## Overview
 
-The **Sensor Data Management Module** handles end-to-end telemetry ingestion, real-time risk assessment, data persistence, and interactive visualization for a flood forecasting platform.
+The **Sensor Data Management & Flood Simulation Module** handles end-to-end telemetry ingestion, background flood simulation generation, real-time risk assessment, data persistence, and interactive dashboard visualization.
 
 ```
-                    +--------------------------------+
-                    |    IoT Flood Monitoring        |
-                    |    Sensors (S101, S102...)     |
-                    +---------------+----------------+
-                                    |
-                                    | REST POST /api/live-sensor
-                                    v
-                    +---------------+----------------+
-                    |   FastAPI Ingestion Gateway    |
-                    |   - Pydantic Schema Validator  |
-                    |   - Risk Rules Engine          |
-                    +---------------+----------------+
-                                    |
-            +-----------------------+-----------------------+
-            |                                               |
-            v                                               v
-+-----------+-------------------+               +-----------+-------------------+
-| PostgreSQL / Supabase         |               | React + Tailwind Dashboard        |
-| - sensors (metadata)          |  GET /api/*   | - 10s Auto Refresh Interval      |
-| - sensor_data (telemetry)     | <-----------  | - Risk Level Indicators           |
-| - processed_sensor_data (risk)|               | - Real-time Telemetry Table       |
-+-------------------------------+               +-----------------------------------+
+                    +-----------------------------------------+
+                    |  Flood & Sensor Simulation Engine       |
+                    |  - 5-second background loop             |
+                    |  - Scenarios: NORMAL / MODERATE_RAIN /  |
+                    |    HEAVY_RAIN / CRITICAL_FLOOD          |
+                    +--------------------+--------------------+
+                                         |
+                                         | Ingest Telemetry
+                                         v
+                    +--------------------+--------------------+
+                    |   FastAPI Ingestion Gateway            |
+                    |   - Pydantic Schema Validator          |
+                    |   - Risk Rules Engine (evaluate_risk)  |
+                    +--------------------+--------------------+
+                                         |
+            +----------------------------+----------------------------+
+            |                                                         |
+            v                                                         v
++-----------+-----------------------+                     +-----------+-----------------------+
+| PostgreSQL / Supabase Database    |                     | React + Tailwind Dashboard        |
+| - sensors                         |  GET /api/*         | - 5s Auto Refresh Cycle           |
+| - sensor_data                     | <------------------ | - Simulation Control Panel        |
+| - processed_sensor_data           |                     | - Simulation Analytics Cards      |
+| - simulation_sessions (NEW)       |                     | - Real-time Telemetry Table       |
+| - simulation_logs (NEW)           |                     +-----------------------------------+
++-----------------------------------+
 ```
 
-## System Components
+## Scenario Definitions
 
-### 1. Ingestion Layer & Pydantic Validation
-- Ingests telemetry payloads: `sensor_id`, `water_level`, `rainfall`, `flow_rate`, `temperature`, `timestamp`.
-- Strict validation: non-negative metrics, range bounds on temperature (-60 to +80 °C), physical water level caps (<= 100m).
-- Automatic sensor auto-provisioning: If incoming sensor payload references an unregistered `sensor_id`, a new `Sensor` entity is dynamically registered.
+| Scenario Mode | Water Level (m) | Rainfall (mm) | Flow Rate (m³/s) | Expected Risk |
+|---|---|---|---|---|
+| **NORMAL** | 0.5 – 2.0 | 0 – 15 | 0.5 – 1.5 | `LOW` |
+| **MODERATE_RAIN** | 2.0 – 4.0 | 15 – 35 | 1.5 – 3.0 | `MEDIUM` |
+| **HEAVY_RAIN** | 4.0 – 6.0 | 35 – 60 | 3.0 – 5.0 | `HIGH` |
+| **CRITICAL_FLOOD** | 6.0 – 10.0 | 60 – 120 | 5.0 – 10.0 | `CRITICAL` |
 
-### 2. Risk Classification Engine
-Calculates severity status based on real-time `water_level`:
-- **LOW**: `water_level < 2.0m`
-- **MEDIUM**: `2.0m <= water_level < 4.0m`
-- **HIGH**: `4.0m <= water_level < 6.0m`
-- **CRITICAL**: `water_level >= 6.0m`
+---
 
-Operational Status Mapping:
-- `LOW`, `MEDIUM`, `HIGH` -> `ACTIVE`
-- `CRITICAL` -> `CRITICAL`
+## Data Pipeline Flow
 
-### 3. Database Layer (PostgreSQL / Supabase + SQLAlchemy)
-- `sensors`: Stores unique sensor identifiers, location names, and GPS coordinates.
-- `sensor_data`: Historical ledger of raw telemetry readings.
-- `processed_sensor_data`: Evaluated risk levels and operational status logs.
-
-### 4. Frontend Dashboard (React + Tailwind CSS)
-- **Dashboard Cards**: Real-time summary metrics (Total Sensors, Peak Water Level, Cumulative Rainfall, Highest Risk Status).
-- **Interactive Sensor Table**: Live list of sensor readings with search filtering by ID or location, risk level pill filters, and timestamp formatting.
-- **Auto Refresh**: Background data synchronization every 10 seconds.
-- **Interactive Telemetry Simulator**: Ingest Modal allowing users to fire sample payloads directly from UI.
+1. **Simulation Generator**: Generates realistic telemetry within selected scenario boundaries every 5 seconds.
+2. **Pydantic Validation**: Validates payload structure and data types (`SensorIngestPayload`).
+3. **Risk Processing**: Evaluates risk level (`evaluate_risk_level`) and operational status (`determine_sensor_status`).
+4. **Database Persistence**: Writes to `sensor_data`, `processed_sensor_data`, and `simulation_logs`.
+5. **Dashboard Visualization**: Frontend automatically polls status and telemetry data every 5 seconds to provide real-time monitoring.
