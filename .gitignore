@@ -9,3 +9,5 @@ node_modules/
 dist/
 *.db
 scratch/
+
+backend/data/uploads/wind_speed_tel_hr_andhra_pradesh_sw_ap_1970_2025.csv
