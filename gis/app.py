@@ -1,4 +1,3 @@
-
 from flask import Flask, request
 import pandas as pd
 import folium
@@ -7,17 +6,26 @@ import geopandas as gpd
 from spatial_intelligence import (
     calculate_sensor_priority,
     classify_priority,
+    generate_priority_reason,
     optimize_sensors
 )
 
 app = Flask(__name__)
 
+
 # ============================================================
 # PATHS
 # ============================================================
 
-DATA_FOLDER = "data"
-BASIN_GEOJSON = "data/geographic/krishna_godavari.geojson"
+DATA_FOLDER = "gis/data"
+
+RIVER_NETWORK_GEOJSON = (
+    "gis/data/geographic/krishna_godavari_river_network.geojson"
+)
+
+BASIN_GEOJSON = (
+    "gis/data/geographic/krishna_godavari.geojson"
+)
 
 
 # ============================================================
@@ -35,7 +43,9 @@ blocked_roads = pd.read_csv(f"{DATA_FOLDER}/blocked_roads.csv")
 hospitals = pd.read_csv(f"{DATA_FOLDER}/hospitals.csv")
 shelters = pd.read_csv(f"{DATA_FOLDER}/shelters.csv")
 sensors = pd.read_csv(f"{DATA_FOLDER}/sensors.csv")
-candidate_sensors = pd.read_csv(f"{DATA_FOLDER}/candidate_sensors.csv")
+candidate_sensors = pd.read_csv(
+    f"{DATA_FOLDER}/candidate_sensors.csv"
+)
 
 
 # ============================================================
@@ -46,6 +56,18 @@ basin_boundaries = gpd.read_file(BASIN_GEOJSON)
 
 # Make sure map coordinates are Latitude / Longitude
 basin_boundaries = basin_boundaries.to_crs(epsg=4326)
+
+
+# ============================================================
+# LOAD OFFICIAL CWC RIVER NETWORK
+# ============================================================
+
+river_network = gpd.read_file(
+    RIVER_NETWORK_GEOJSON
+)
+
+# Make sure river coordinates are Latitude / Longitude
+river_network = river_network.to_crs(epsg=4326)
 
 
 # ============================================================
@@ -61,6 +83,18 @@ candidate_sensors["priority_score"] = candidate_sensors.apply(
     ),
     axis=1
 )
+
+
+candidate_sensors["priority_reason"] = candidate_sensors.apply(
+    lambda row: generate_priority_reason(
+        row["flood_risk"],
+        row["population_risk"],
+        row["dam_proximity"],
+        row["road_access"]
+    ),
+    axis=1
+)
+
 
 candidate_sensors["priority_level"] = candidate_sensors[
     "priority_score"
@@ -120,19 +154,65 @@ def dashboard():
     # FILTER CSV DATA
     # --------------------------------------------------------
 
-    filtered_dams = filter_basin(dams, basin)
-    filtered_rivers = filter_basin(rivers, basin)
-    filtered_reservoirs = filter_basin(reservoirs, basin)
-    filtered_flood_zones = filter_basin(flood_zones, basin)
-    filtered_elevation = filter_basin(elevation, basin)
-    filtered_population = filter_basin(population, basin)
-    filtered_roads = filter_basin(roads, basin)
-    filtered_blocked_roads = filter_basin(blocked_roads, basin)
-    filtered_hospitals = filter_basin(hospitals, basin)
-    filtered_shelters = filter_basin(shelters, basin)
-    filtered_sensors = filter_basin(sensors, basin)
-    filtered_candidates = filter_basin(candidate_sensors, basin)
-    filtered_optimized = filter_basin(optimized_sensors, basin)
+    filtered_dams = filter_basin(
+        dams,
+        basin
+    )
+
+    filtered_reservoirs = filter_basin(
+        reservoirs,
+        basin
+    )
+
+    filtered_flood_zones = filter_basin(
+        flood_zones,
+        basin
+    )
+
+    filtered_elevation = filter_basin(
+        elevation,
+        basin
+    )
+
+    filtered_population = filter_basin(
+        population,
+        basin
+    )
+
+    filtered_roads = filter_basin(
+        roads,
+        basin
+    )
+
+    filtered_blocked_roads = filter_basin(
+        blocked_roads,
+        basin
+    )
+
+    filtered_hospitals = filter_basin(
+        hospitals,
+        basin
+    )
+
+    filtered_shelters = filter_basin(
+        shelters,
+        basin
+    )
+
+    filtered_sensors = filter_basin(
+        sensors,
+        basin
+    )
+
+    filtered_candidates = filter_basin(
+        candidate_sensors,
+        basin
+    )
+
+    filtered_optimized = filter_basin(
+        optimized_sensors,
+        basin
+    )
 
 
     # --------------------------------------------------------
@@ -143,6 +223,49 @@ def dashboard():
         basin_boundaries,
         basin
     )
+
+
+    # --------------------------------------------------------
+    # FILTER OFFICIAL CWC RIVER NETWORK
+    # --------------------------------------------------------
+
+    if basin == "All":
+
+        # Keep only the Krishna and Godavari basin areas
+        # because these are the project scope.
+
+        project_basins = basin_boundaries[
+            basin_boundaries["ba_name"]
+            .astype(str)
+            .str.lower()
+            .isin(["krishna", "godavari"])
+        ]
+
+        if not project_basins.empty:
+
+            filtered_river_network = gpd.clip(
+                river_network,
+                project_basins
+            )
+
+        else:
+
+            filtered_river_network = river_network.copy()
+
+    else:
+
+        if not filtered_basin_boundaries.empty:
+
+            filtered_river_network = gpd.clip(
+                river_network,
+                filtered_basin_boundaries
+            )
+
+        else:
+
+            filtered_river_network = (
+                river_network.iloc[0:0].copy()
+            )
 
 
     # ========================================================
@@ -164,6 +287,7 @@ def dashboard():
         name="Real CWC Basin Boundaries",
         show=True
     )
+
 
     folium.GeoJson(
         filtered_basin_boundaries.to_json(),
@@ -193,7 +317,53 @@ def dashboard():
 
     ).add_to(basin_layer)
 
+
     basin_layer.add_to(m)
+
+
+    # ========================================================
+    # OFFICIAL CWC RIVER NETWORK
+    # ========================================================
+
+    river_network_layer = folium.FeatureGroup(
+        name="Official CWC River Network",
+        show=True
+    )
+
+
+    if not filtered_river_network.empty:
+
+        folium.GeoJson(
+            filtered_river_network.to_json(),
+
+            name="CWC River Network",
+
+            style_function=lambda feature: {
+                "color": "#0066FF",
+                "weight": 2.5,
+                "opacity": 0.9
+            },
+
+            highlight_function=lambda feature: {
+                "color": "#00FFFF",
+                "weight": 4,
+                "opacity": 1
+            },
+
+            tooltip=folium.GeoJsonTooltip(
+                fields=[
+                    "rivname"
+                ],
+                aliases=[
+                    "River:"
+                ],
+                sticky=True
+            )
+
+        ).add_to(river_network_layer)
+
+
+    river_network_layer.add_to(m)
 
 
     # ========================================================
@@ -204,6 +374,7 @@ def dashboard():
         name="Dams",
         show=True
     )
+
 
     for _, row in filtered_dams.iterrows():
 
@@ -230,44 +401,8 @@ def dashboard():
 
         ).add_to(dam_layer)
 
+
     dam_layer.add_to(m)
-
-
-    # ========================================================
-    # RIVERS
-    # ========================================================
-
-    river_layer = folium.FeatureGroup(
-        name="Rivers",
-        show=True
-    )
-
-    for _, row in filtered_rivers.iterrows():
-
-        folium.CircleMarker(
-            location=[
-                row["latitude"],
-                row["longitude"]
-            ],
-
-            radius=7,
-
-            color="#0066FF",
-            fill=True,
-            fill_color="#0066FF",
-            fill_opacity=0.9,
-
-            popup=folium.Popup(
-                f"""
-                <b>River:</b> {row['name']}<br>
-                <b>Basin:</b> {row['basin']}
-                """,
-                max_width=300
-            )
-
-        ).add_to(river_layer)
-
-    river_layer.add_to(m)
 
 
     # ========================================================
@@ -278,6 +413,7 @@ def dashboard():
         name="Reservoirs",
         show=True
     )
+
 
     for _, row in filtered_reservoirs.iterrows():
 
@@ -304,6 +440,7 @@ def dashboard():
 
         ).add_to(reservoir_layer)
 
+
     reservoir_layer.add_to(m)
 
 
@@ -316,9 +453,13 @@ def dashboard():
         show=True
     )
 
+
     for _, row in filtered_flood_zones.iterrows():
 
-        risk = str(row.get("risk", "Medium")).lower()
+        risk = str(
+            row.get("risk", "Medium")
+        ).lower()
+
 
         if risk == "high":
             color = "red"
@@ -328,6 +469,7 @@ def dashboard():
 
         else:
             color = "green"
+
 
         folium.Circle(
             location=[
@@ -344,14 +486,20 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Flood Zone:</b> {row.get('name', 'Flood Zone')}<br>
-                <b>Risk:</b> {row.get('risk', 'N/A')}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Flood Zone:</b>
+                {row.get('name', 'Flood Zone')}<br>
+
+                <b>Risk:</b>
+                {row.get('risk', 'N/A')}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             )
 
         ).add_to(flood_layer)
+
 
     flood_layer.add_to(m)
 
@@ -364,6 +512,7 @@ def dashboard():
         name="Elevation",
         show=False
     )
+
 
     for _, row in filtered_elevation.iterrows():
 
@@ -382,13 +531,17 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Elevation:</b> {row.get('elevation', 'N/A')} m<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Elevation:</b>
+                {row.get('elevation', 'N/A')} m<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             )
 
         ).add_to(elevation_layer)
+
 
     elevation_layer.add_to(m)
 
@@ -401,6 +554,7 @@ def dashboard():
         name="Population",
         show=False
     )
+
 
     for _, row in filtered_population.iterrows():
 
@@ -419,13 +573,17 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Population:</b> {row.get('population', 'N/A')}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Population:</b>
+                {row.get('population', 'N/A')}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             )
 
         ).add_to(population_layer)
+
 
     population_layer.add_to(m)
 
@@ -438,6 +596,7 @@ def dashboard():
         name="Roads",
         show=False
     )
+
 
     for _, row in filtered_roads.iterrows():
 
@@ -456,13 +615,17 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Road:</b> {row.get('name', 'Road')}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Road:</b>
+                {row.get('name', 'Road')}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             )
 
         ).add_to(road_layer)
+
 
     road_layer.add_to(m)
 
@@ -476,6 +639,7 @@ def dashboard():
         show=False
     )
 
+
     for _, row in filtered_blocked_roads.iterrows():
 
         folium.Marker(
@@ -487,8 +651,12 @@ def dashboard():
             popup=folium.Popup(
                 f"""
                 <b>Blocked Road</b><br>
-                <b>Location:</b> {row.get('name', 'Unknown')}<br>
-                <b>Reason:</b> {row.get('reason', 'Flooding')}
+
+                <b>Location:</b>
+                {row.get('name', 'Unknown')}<br>
+
+                <b>Reason:</b>
+                {row.get('reason', 'Flooding')}
                 """,
                 max_width=300
             ),
@@ -500,6 +668,7 @@ def dashboard():
             )
 
         ).add_to(blocked_road_layer)
+
 
     blocked_road_layer.add_to(m)
 
@@ -513,6 +682,7 @@ def dashboard():
         show=False
     )
 
+
     for _, row in filtered_hospitals.iterrows():
 
         folium.Marker(
@@ -523,8 +693,11 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Hospital:</b> {row.get('name', 'Hospital')}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Hospital:</b>
+                {row.get('name', 'Hospital')}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             ),
@@ -536,6 +709,7 @@ def dashboard():
             )
 
         ).add_to(hospital_layer)
+
 
     hospital_layer.add_to(m)
 
@@ -549,6 +723,7 @@ def dashboard():
         show=False
     )
 
+
     for _, row in filtered_shelters.iterrows():
 
         folium.Marker(
@@ -559,8 +734,11 @@ def dashboard():
 
             popup=folium.Popup(
                 f"""
-                <b>Shelter:</b> {row.get('name', 'Shelter')}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+                <b>Shelter:</b>
+                {row.get('name', 'Shelter')}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             ),
@@ -573,6 +751,7 @@ def dashboard():
 
         ).add_to(shelter_layer)
 
+
     shelter_layer.add_to(m)
 
 
@@ -584,6 +763,7 @@ def dashboard():
         name="Existing Sensors",
         show=True
     )
+
 
     for _, row in filtered_sensors.iterrows():
 
@@ -603,13 +783,18 @@ def dashboard():
             popup=folium.Popup(
                 f"""
                 <b>Existing Sensor</b><br>
-                <b>ID:</b> {row.get('name', row.get('id', 'Sensor'))}<br>
-                <b>Basin:</b> {row.get('basin', 'N/A')}
+
+                <b>ID:</b>
+                {row.get('name', row.get('id', 'Sensor'))}<br>
+
+                <b>Basin:</b>
+                {row.get('basin', 'N/A')}
                 """,
                 max_width=300
             )
 
         ).add_to(sensor_layer)
+
 
     sensor_layer.add_to(m)
 
@@ -622,6 +807,7 @@ def dashboard():
         name="Candidate Sensors",
         show=False
     )
+
 
     for _, row in filtered_candidates.iterrows():
 
@@ -641,18 +827,33 @@ def dashboard():
             popup=folium.Popup(
                 f"""
                 <b>Candidate Sensor</b><br>
-                <b>ID:</b> {row.get('name', row.get('id', 'Candidate'))}<br>
-                <b>Priority Score:</b> {row['priority_score']}<br>
-                <b>Priority:</b> {row['priority_level']}<br>
-                <b>Flood Risk:</b> {row['flood_risk']}<br>
-                <b>Population Risk:</b> {row['population_risk']}<br>
-                <b>Dam Proximity:</b> {row['dam_proximity']}<br>
-                <b>Road Access:</b> {row['road_access']}
+
+                <b>ID:</b>
+                {row.get('name', row.get('id', 'Candidate'))}<br>
+
+                <b>Priority Score:</b>
+                {row['priority_score']}<br>
+
+                <b>Priority:</b>
+                {row['priority_level']}<br>
+
+                <b>Flood Risk:</b>
+                {row['flood_risk']}<br>
+
+                <b>Population Risk:</b>
+                {row['population_risk']}<br>
+
+                <b>Dam Proximity:</b>
+                {row['dam_proximity']}<br>
+
+                <b>Road Access:</b>
+                {row['road_access']}
                 """,
                 max_width=350
             )
 
         ).add_to(candidate_layer)
+
 
     candidate_layer.add_to(m)
 
@@ -666,6 +867,7 @@ def dashboard():
         show=True
     )
 
+
     for _, row in filtered_optimized.iterrows():
 
         folium.Marker(
@@ -677,14 +879,22 @@ def dashboard():
             popup=folium.Popup(
                 f"""
                 <b>Optimized Sensor</b><br>
-                <b>ID:</b> {row.get('name', row.get('id', 'Optimized'))}<br>
-                <b>Priority Score:</b> {row['priority_score']}<br>
-                <b>Priority:</b> {row['priority_level']}<br><br>
+
+                <b>ID:</b>
+                {row.get('name', row.get('id', 'Optimized'))}<br>
+
+                <b>Priority Score:</b>
+                {row['priority_score']}<br>
+
+                <b>Priority:</b>
+                {row['priority_level']}<br><br>
 
                 <b>Why selected?</b><br>
-                This location received a high spatial priority
-                score based on flood risk, population risk,
-                dam proximity and road accessibility.
+
+                This location received a high spatial
+                priority score based on flood risk,
+                population risk, dam proximity and
+                road accessibility.
                 """,
                 max_width=400
             ),
@@ -696,6 +906,7 @@ def dashboard():
             )
 
         ).add_to(optimized_layer)
+
 
     optimized_layer.add_to(m)
 
@@ -727,15 +938,18 @@ def dashboard():
             "
         >
 
-            <option value="All" {'selected' if basin == 'All' else ''}>
+            <option value="All"
+                {'selected' if basin == 'All' else ''}>
                 All
             </option>
 
-            <option value="Krishna" {'selected' if basin == 'Krishna' else ''}>
+            <option value="Krishna"
+                {'selected' if basin == 'Krishna' else ''}>
                 Krishna
             </option>
 
-            <option value="Godavari" {'selected' if basin == 'Godavari' else ''}>
+            <option value="Godavari"
+                {'selected' if basin == 'Godavari' else ''}>
                 Godavari
             </option>
 
@@ -744,14 +958,10 @@ def dashboard():
     </div>
     """
 
+
     m.get_root().html.add_child(
         folium.Element(filter_html)
     )
-
-
-    # ========================================================
-    # LEGEND
-    # ========================================================
 
 
     # ========================================================
@@ -778,11 +988,11 @@ def dashboard():
         <span style="color:#00FFFF;">▰</span>
         Real CWC Basin Boundary<br>
 
+        <span style="color:#0066FF;">━</span>
+        Official CWC River Network<br>
+
         <span style="color:blue;">●</span>
         Dams / Existing Sensors<br>
-
-        <span style="color:#0066FF;">●</span>
-        Rivers<br>
 
         <span style="color:#00AA44;">●</span>
         Reservoirs<br>
@@ -807,6 +1017,7 @@ def dashboard():
 
     </div>
     '''
+
 
     m.get_root().html.add_child(
         folium.Element(legend_html)
@@ -834,6 +1045,7 @@ def dashboard():
 # ============================================================
 
 if __name__ == "__main__":
+
     app.run(
         debug=True
     )
