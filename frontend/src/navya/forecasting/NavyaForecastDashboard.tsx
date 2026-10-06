@@ -13,8 +13,10 @@ import { StateBanner } from '../../components/ui/StateBanner'
 import { NavyaForecastSeriesChart } from './NavyaForecastSeriesChart'
 import { NavyaForecastSummary } from './NavyaForecastSummary'
 import { NavyaModelComparison } from './NavyaModelComparison'
+import { NavyaExposureDisplay } from './NavyaExposureDisplay'
 import { NavyaProvenancePanel } from './NavyaProvenancePanel'
 import { NavyaRiskDisplay } from './NavyaRiskDisplay'
+import { NavyaSeriesAvailability } from './NavyaSeriesAvailability'
 import { useNavyaForecast } from './useNavyaForecast'
 import type { NavyaForecastRecord, NavyaModelComparison as Comparison } from './types'
 
@@ -126,6 +128,9 @@ export function NavyaForecastDashboard({ forecast, comparison, loadOnMount = tru
           title="Predicted versus observed water level, backtest window"
         />
       </GlassCard>
+
+      <NavyaSeriesAvailability forecast={record} />
+      <NavyaExposureDisplay forecast={record} />
 
       <NavyaModelComparison
         comparison={table}

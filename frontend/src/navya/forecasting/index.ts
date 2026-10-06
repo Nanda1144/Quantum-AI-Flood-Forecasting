@@ -42,6 +42,12 @@ export { NavyaRiskDisplay } from './NavyaRiskDisplay'
 export { NavyaForecastSeriesChart } from './NavyaForecastSeriesChart'
 export { NavyaModelComparison } from './NavyaModelComparison'
 export { NavyaProvenancePanel, HumanInputNote } from './NavyaProvenancePanel'
+export { NavyaForecastPage } from './NavyaForecastPage'
+export { NavyaForecastScope } from './NavyaForecastScope'
+export { NavyaStationSelector } from './NavyaStationSelector'
+export { NavyaRiverSelector } from './NavyaRiverSelector'
+export { NavyaSeriesAvailability } from './NavyaSeriesAvailability'
+export { NavyaExposureDisplay } from './NavyaExposureDisplay'
 
 export { useNavyaForecast } from './useNavyaForecast'
 
@@ -72,6 +78,51 @@ export {
   summariseProvenance,
   thresholdIsOfficial,
 } from './contract'
+
+export {
+  NO_RIVER_IDENTITY_REASON,
+  NO_STATION_REGISTRY_REASON,
+  describeRiverSelection,
+  describeStationSelection,
+  riverRegistryAvailability,
+  riverScopeStatus,
+  riversFromRecord,
+  stationRegistryAvailability,
+  stationScopeStatus,
+  stationsFromRecord,
+} from './scope'
+export type {
+  NavyaRiverOption,
+  NavyaRiverScopeStatus,
+  NavyaScopeAvailability,
+  NavyaScopeNote,
+  NavyaScopeTone,
+  NavyaStationOption,
+  NavyaStationScopeStatus,
+} from './scope'
+
+export { expectedPeakOf, forecastSeriesOf, timeToThreshold } from './derived'
+export type {
+  ExpectedPeakResult,
+  NavyaForecastSeriesPoint,
+  TimeToThresholdResult,
+} from './derived'
+
+export {
+  INFRASTRUCTURE_EXPOSURE_REASON,
+  POPULATION_EXPOSURE_REASON,
+  RESPONSE_PRIORITY_REASON,
+  describeExposureReading,
+  exposureReadings,
+  infrastructureExposure,
+  populationExposure,
+  responsePriority,
+} from './exposure'
+export type {
+  NavyaExposureAvailability,
+  NavyaExposureKind,
+  NavyaExposureReading,
+} from './exposure'
 
 export {
   HUMAN_INPUT_REQUIRED,

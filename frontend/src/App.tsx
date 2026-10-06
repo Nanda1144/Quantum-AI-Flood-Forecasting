@@ -13,10 +13,11 @@ import { QuboVisualization } from './pages/QuboVisualization'
 import { QuantumJobStatus } from './pages/QuantumJobStatus'
 import { QuantumBenchmark } from './pages/QuantumBenchmark'
 import { OptimizationResult } from './pages/OptimizationResult'
+import { NavyaForecastPage } from './navya/forecasting'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, useAuth } from './auth/AuthContext'
-import { BrainCircuit, GitCompare, LogOut, Rocket, Scale, type LucideIcon } from 'lucide-react'
+import { BrainCircuit, GitCompare, LogOut, Rocket, Scale, Waves, type LucideIcon } from 'lucide-react'
 
 function NavLink({ to, children, icon: Icon }: { to: string; children: React.ReactNode; icon: LucideIcon }) {
   const location = useLocation()
@@ -47,6 +48,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <NavLink to="/model-comparison" icon={GitCompare}>Model Comparison</NavLink>
           <NavLink to="/quantum-optimization" icon={Rocket}>Quantum Optimization</NavLink>
           <NavLink to="/quantum-benchmark" icon={Scale}>Quantum Benchmark</NavLink>
+          <NavLink to="/forecast" icon={Waves}>Forecast</NavLink>
 
           <div className="ml-auto flex items-center gap-3">
             {session && (
@@ -90,6 +92,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<AIAnalyticsDashboard />} />
           <Route path="/model-comparison" element={<ModelComparison />} />
+          <Route path="/forecast" element={<NavyaForecastPage />} />
           <Route path="/quantum-optimization" element={<QuantumOptimization />} />
           <Route path="/quantum-benchmark" element={<QuantumBenchmark />} />
           <Route path="/qubo-visualization/:jobId" element={<QuboVisualization />} />

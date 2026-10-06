@@ -78,7 +78,15 @@ export function NavyaRiskDisplay({ forecast }: Props) {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mist-500">
+            Risk score
+          </p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-mist-50">
+            {Number.isFinite(forecast.riskScore) ? forecast.riskScore.toFixed(2) : '—'}
+          </p>
+        </div>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-mist-500">
             Exceedance probability
@@ -102,6 +110,11 @@ export function NavyaRiskDisplay({ forecast }: Props) {
           <p className="mt-1 text-2xl font-bold tabular-nums text-mist-50">{points.length}</p>
         </div>
       </div>
+
+      <p className="text-[11px] text-mist-600">
+        Exceedance probability is the probability that the predicted target exceeds the configured
+        threshold — not a flood warning on its own.
+      </p>
 
       <HumanInputNote tone={official ? 'info' : 'warning'}>
         {describeThreshold(forecast)}
