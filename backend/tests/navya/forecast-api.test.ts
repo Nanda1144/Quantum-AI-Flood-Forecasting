@@ -184,6 +184,27 @@ describe('POST /api/forecast', () => {
     assert.equal(res.body.success, false)
   })
 
+  it('B4: surfaces the configured hydro engine verbatim when it is dependency blocked (no dataset configured)', async () => {
+    // The exact message the configured HydroForecastEngine emits when no
+    // HYDRO_DATASET_PATH is set ("forecasting pipeline could not start: no
+    // dataset configured. ..."), wrapped by the AI-service routing layer
+    // ("Engine failed to produce a forecast: ..."). Pinned byte-for-byte so the
+    // backend contract is tied to the real engine refusal, not a canned example.
+    const realEngineMessage =
+      'Engine failed to produce a forecast: forecasting pipeline could not start: no dataset configured. Set HYDRO_DATASET_PATH to a real hydrological CSV, or run the synthetic demo writer (training.py --write-synthetic <path>) which labels the output as SYNTHETIC/DEMO DATA.'
+    const stub = stubForecastClient({ forecast: new EnvelopeError('FORECAST_ENGINE_ERROR', realEngineMessage) })
+    const { app, container, token } = await setup(stub)
+    const res = await request(app).post('/api/forecast').set(withAuth(token)).send({})
+    assert.equal(res.status, 502)
+    assert.equal(res.body.success, false)
+    assert.equal(res.body.error.code, 'FORECAST_ENGINE_ERROR')
+    // Byte-for-byte message fidelity: the engine's honest refusal survives the
+    // backend envelope — no baseline, no fabricated data, nothing persisted.
+    assert.equal(res.body.error.message, realEngineMessage)
+    assert.ok(!('data' in res.body))
+    assert.equal(await container.forecastRepo.getLatest(), null)
+  })
+
   it('503 AI_SERVICE_UNAVAILABLE when the service is unreachable', async () => {
     const stub = stubForecastClient({
       forecast: new EnvelopeError('AI_SERVICE_UNAVAILABLE', 'AI service is currently unavailable'),
