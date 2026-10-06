@@ -31,6 +31,12 @@ _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _AI_SERVICE_ROOT = os.path.dirname(_TESTS_DIR)
 if _AI_SERVICE_ROOT not in sys.path:
     sys.path.insert(0, _AI_SERVICE_ROOT)
+# The team's `tests/__init__.py` makes `tests` a package, so pytest's default
+# prepend import mode no longer puts the tests directory itself on `sys.path`.
+# Navya's hydro tests import their sibling fixture modules (`hydro_phase*_fixtures`)
+# by bare name, so both directories must be reachable.
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
 
 # --- optional-dependency guard ----------------------------------------------
 try:  # pragma: no cover - import guard
