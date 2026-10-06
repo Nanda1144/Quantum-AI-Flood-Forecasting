@@ -15,6 +15,7 @@ import { apiLimiter } from './middleware/rate-limit.ts'
 import { authRoutes } from './routes/auth.routes.ts'
 import { aiRoutes } from './routes/ai.routes.ts'
 import { benchmarkSummaryRouter, optimizationRoutes } from './routes/optimization.routes.ts'
+import { navyaForecastRoutes } from './navya/forecasting/routes.ts'
 
 export async function createApp(container?: Container): Promise<express.Express> {
   const c = container ?? (await buildContainer())
@@ -35,6 +36,10 @@ export async function createApp(container?: Container): Promise<express.Express>
   // External benchmark ledger alias — `GET /api/benchmarks` (completed runs,
   // newest first). Shares the same handler as `/api/optimization/benchmarks`.
   app.use(benchmarkSummaryRouter(c))
+
+  // Navya forecast + risk surfaces (backend/src/navya/forecasting). Mounted on
+  // /api so routes resolve to /api/forecast..., /api/risk-map, /api/risk/:areaId.
+  app.use('/api', navyaForecastRoutes(c))
 
   app.use(notFoundHandler)
   app.use(errorHandler)
