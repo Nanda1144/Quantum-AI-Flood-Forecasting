@@ -1,6 +1,6 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: frontend (tests) | Owner: Nanda | License: Apache-2.0
+ * Module: frontend (tests) | License: Apache-2.0
  *
  * PLEDGE: Coverage for the Quantum Job Status page lifecycle — the polling
  * contract is the point: the page polls while a job is live (queued / running)

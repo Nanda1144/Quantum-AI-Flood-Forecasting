@@ -1,6 +1,6 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: frontend (tests) | Owner: Nanda | License: Apache-2.0
+ * Module: frontend (tests) | License: Apache-2.0
  *
  * PLEDGE: These tests verify the benchmark page's wiring: the ledger loads
  * newest-first and the hook selects the most recent completed experiment by

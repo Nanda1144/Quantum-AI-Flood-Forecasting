@@ -1,6 +1,6 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: frontend (tests) | Owner: Nanda | License: Apache-2.0
+ * Module: frontend (tests) | License: Apache-2.0
  *
  * PLEDGE: Coverage for the most important element on the Optimization Result
  * page — the explicit operational verdict. The three states are pinned down so

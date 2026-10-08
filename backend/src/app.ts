@@ -1,8 +1,10 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: backend | Owner: Nanda | License: Apache-2.0
+ * Module: backend | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform. It is honest by construction,
+ * per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is
+ * clearly labelled, and no quantum speedup is ever claimed.
  */
 
 import cors from 'cors'
@@ -15,6 +17,11 @@ import { apiLimiter } from './middleware/rate-limit.ts'
 import { authRoutes } from './routes/auth.routes.ts'
 import { aiRoutes } from './routes/ai.routes.ts'
 import { benchmarkSummaryRouter, optimizationRoutes } from './routes/optimization.routes.ts'
+import { forecastRoutes } from './routes/forecast.routes.ts'
+import { gisRoutes } from './routes/gis.routes.ts'
+import { iotRoutes } from './routes/iot.routes.ts'
+import { dataRoutes } from './routes/data.routes.ts'
+import { responseRoutes } from './routes/response.routes.ts'
 
 export async function createApp(container?: Container): Promise<express.Express> {
   const c = container ?? (await buildContainer())
@@ -25,16 +32,40 @@ export async function createApp(container?: Container): Promise<express.Express>
   app.use(express.json({ limit: '64kb' }))
   app.use(apiLimiter)
 
+  // Health check endpoints
   app.get('/api/health', (_req, res) => {
     res.json(success({ service: 'backend', status: 'ok' }))
   })
+  app.get('/api/ai/health', (_req, res) => {
+    res.json(success({ service: 'ai-analytics', status: 'ok' }))
+  })
+  app.get('/api/quantum/health', (_req, res) => {
+    res.json(success({ service: 'quantum-service', status: 'ok' }))
+  })
 
+  // Core Service Routers
   app.use('/api/auth', authRoutes(c.auth))
   app.use('/api/ai', aiRoutes(c))
   app.use('/api/optimization', optimizationRoutes(c))
-  // External benchmark ledger alias — `GET /api/benchmarks` (completed runs,
-  // newest first). Shares the same handler as `/api/optimization/benchmarks`.
+  app.use('/api/quantum', optimizationRoutes(c))
   app.use(benchmarkSummaryRouter(c))
+
+  // Flood Forecasting & Risk
+  app.use('/api', forecastRoutes(c))
+  app.use('/api/forecast', forecastRoutes(c))
+
+  // GIS Spatial Intelligence & Candidate Locations
+  app.use('/api/gis', gisRoutes())
+
+  // IoT Sensor Telemetry & Simulation Engine
+  app.use('/api/iot', iotRoutes())
+  app.use('/api/sensors', iotRoutes())
+
+  // Hydrology Datasets & Quality Preprocessing
+  app.use('/api/data', dataRoutes())
+
+  // Disaster Response Planning & Evacuation
+  app.use('/api/response', responseRoutes())
 
   app.use(notFoundHandler)
   app.use(errorHandler)

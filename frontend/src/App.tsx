@@ -1,8 +1,10 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: frontend | Owner: Nanda | License: Apache-2.0
+ * Module: frontend | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform. It is honest by construction,
+ * per the platform README: no fabricated data, no invented metrics, every surrogate or
+ * fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'

@@ -1,6 +1,6 @@
 /**
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
- * Module: backend | Owner: Nanda | License: Apache-2.0
+ * Module: backend | License: Apache-2.0
  *
  * PLEDGE: These tests verify the sensor-placement QUBO math directly: symmetric
  * construction, dominated penalty terms (an infeasible bitstring must never
