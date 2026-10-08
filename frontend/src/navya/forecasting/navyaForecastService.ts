@@ -40,6 +40,7 @@
  */
 
 import { fetchJson } from '../../services/aiService'
+import { authHeaders, notifyUnauthorized } from '../../services/authService'
 import type { APIError, RiskLevel } from '../../types/ai'
 import type {
   NavyaBacktestPoint,
@@ -68,6 +69,69 @@ interface RawForecastPayload {
   risk_level: RiskLevel
   threshold_level?: number | null
   threshold_label?: string | null
+}
+
+async function postForecast<T>(path: string, body: unknown): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 6000)
+
+  try {
+    const response = await fetch(path, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...authHeaders(),
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (response.status === 401) {
+      notifyUnauthorized()
+      throw { code: 'UNAUTHORIZED', message: 'Session expired or not authenticated - please sign in' } satisfies APIError
+    }
+
+    if (!response.ok) {
+      let message = `Request to ${path} failed with status ${response.status}`
+      let code = 'HTTP_ERROR'
+
+      try {
+        const responseBody = (await response.json()) as {
+          error?: { code?: string; message?: string }
+        }
+
+        if (responseBody?.error?.message) {
+          message = responseBody.error.message
+          code = responseBody.error.code ?? code
+        }
+      } catch {
+        /* non-JSON error body, keep defaults */
+      }
+
+      throw { code, message } satisfies APIError
+    }
+
+    const responseBody = (await response.json()) as { data?: unknown }
+    return (responseBody.data ?? responseBody) as T
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw { code: 'TIMEOUT', message: `Request to ${path} timed out` } satisfies APIError
+    }
+
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      'message' in error
+    ) {
+      throw error
+    }
+
+    throw { code: 'API_ERROR', message: 'Request to the forecast service failed' } satisfies APIError
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const asString = (value: unknown): string | null =>
@@ -267,8 +331,8 @@ export function toNavyaModelComparison(raw: unknown): NavyaModelComparison {
 }
 
 export const navyaForecastApi = {
-  /** GET /api/ai/forecast — the team's endpoint, read without modification. */
-  getLatest: () => fetchJson<RawForecastPayload>('/api/ai/forecast'),
+  /** POST /api/forecast - create and serve the latest forecast record. */
+  getLatest: () => postForecast<RawForecastPayload>('/api/forecast', { horizon_hours: 24 }),
 
   /** GET /api/ai/models/comparison — registry scores, never derived here. */
   getComparison: () => fetchJson<unknown>('/api/ai/models/comparison'),
