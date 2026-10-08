@@ -1,0 +1,5 @@
+location,basin,latitude,longitude,population,risk_level
+Krishna Region,Krishna,16.20,80.00,500000,High
+Srisailam Region,Krishna,16.08,78.87,150000,Medium
+Godavari Region,Godavari,17.30,81.80,600000,High
+Polavaram Region,Godavari,17.25,81.65,200000,Medium

@@ -1,0 +1,5 @@
+id,name,basin,latitude,longitude,capacity,status
+SH001,Krishna Relief Shelter,Krishna,16.32,80.42,1000,Open
+SH002,Srisailam Relief Center,Krishna,16.10,78.90,500,Open
+SH003,Godavari Relief Shelter,Godavari,17.02,81.78,1200,Open
+SH004,Polavaram Relief Center,Godavari,17.27,81.67,600,Open

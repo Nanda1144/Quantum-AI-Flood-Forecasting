@@ -1,0 +1,5 @@
+id,name,basin,latitude,longitude,sensor_type,status
+S001,Krishna Water Level Sensor,Krishna,16.20,80.00,Water Level,Active
+S002,Srisailam Dam Sensor,Krishna,16.08,78.87,Dam Monitoring,Active
+S003,Godavari Water Level Sensor,Godavari,17.30,81.80,Water Level,Active
+S004,Polavaram Dam Sensor,Godavari,17.25,81.65,Dam Monitoring,Active

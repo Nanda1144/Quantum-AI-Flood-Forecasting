@@ -1,0 +1,5 @@
+id,name,basin,latitude,longitude,flood_risk,population_risk,dam_proximity,road_access
+C001,Krishna Candidate 1,Krishna,16.25,80.05,90,80,70,85
+C002,Krishna Candidate 2,Krishna,16.15,79.95,75,70,90,80
+C003,Godavari Candidate 1,Godavari,17.35,81.75,90,85,75,80
+C004,Godavari Candidate 2,Godavari,17.20,81.70,80,75,90,85
