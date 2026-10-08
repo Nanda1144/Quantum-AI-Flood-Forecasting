@@ -1,0 +1,51 @@
+flowchart LR
+  subgraph NAVYA_OWNED["forecasting-module-owned contract"]
+    N1["ForecastRecord<br/>backend/src/features/forecasting/types.ts"]
+    N2["Navya forecast service<br/>frontend/src/features/forecasting/forecastService.ts"]
+    N3["Provenance guards<br/>mandatoryForecastLabel, mandatoryMetricLabel<br/>assertComparisonIsHonest"]
+    N4["Adapters<br/>toExistingOptimizationPayload<br/>toProposedForecastHandoff"]
+  end
+
+  subgraph TEAM_OWNED["Team-owned - not modified by Navya"]
+    T1["ForecastEngine protocol and factory<br/>ai-service/app/engines"]
+    T2["HTTP routes<br/>ai-service/app/api/ai.routes.ts"]
+    T3["Team API contract types<br/>backend/src/types/contract.ts"]
+    T4["forecast-sync.service.ts<br/>maps AI contract to Forecast - L50-63"]
+    T5["Optimization input<br/>requires forecast_id"]
+    T6["Persisted forecast table<br/>schema unchanged"]
+  end
+
+  subgraph PROPOSED["Proposed integration - team-owner action required"]
+    P1["Register a Navya forecast route"]
+    P2["Extend forecast-sync with provenance, metric split, threshold policy, residual sigma"]
+    P3["Extend the optimization input beyond forecast_id"]
+  end
+
+  N1 --> T1
+  T1 --> T2
+  T2 --> T3
+  T3 --> T4
+  T4 --> T5
+  N1 --> N4 --> T5
+  T4 --> T6
+  N2 -.->|awaits P1| T2
+
+  T2 -.->|no route registered| BLOCK1["BLOCKER 1 - dashboard cannot fetch"]
+  T4 -.->|no schema slot| BLOCK2["BLOCKER 2 - provenance cannot cross"]
+  T5 -.->|forecast_id only| BLOCK3["BLOCKER 3 - risk fields cannot cross"]
+
+  BLOCK1 -.-> P1
+  BLOCK2 -.-> P2
+  BLOCK3 -.-> P3
+
+  N3 -.->|guards applied client-side<br/>so honesty does not depend on the backend| T3
+
+  classDef navya fill:#0f3d2e,stroke:#34d399,color:#ecfdf5
+  classDef team fill:#1e293b,stroke:#64748b,color:#e2e8f0
+  classDef proposed fill:#3b2f14,stroke:#fbbf24,color:#fef3c7,stroke-dasharray:4 4
+  classDef block fill:#3f1d2e,stroke:#fb7185,color:#ffe4e6,stroke-dasharray:5 5
+
+  class N1,N2,N3,N4 navya
+  class T1,T2,T3,T4,T5,T6 team
+  class P1,P2,P3 proposed
+  class BLOCK1,BLOCK2,BLOCK3 block

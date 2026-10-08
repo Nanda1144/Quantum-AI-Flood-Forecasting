@@ -2,7 +2,7 @@
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
  * Module: backend | Owner: Nanda | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
 /** Zod schemas for request validation. Invalid data → 422, never coerced. */
@@ -39,6 +39,14 @@ export const listPredictionsQuerySchema = z.object({
 })
 
 export const registryStatusSchema = z.enum(['active', 'retired', 'development'])
+
+/**
+ * Horizon query for the pass-through forecast endpoint (`GET /api/ai/forecast`).
+ * Mirrors the AI service contract bounds (`horizon_hours`, 1..72).
+ */
+export const latestForecastQuerySchema = z.object({
+  horizon_hours: z.coerce.number().int().min(1).max(72).default(24),
+})
 
 /**
  * Registry version ids are BIGINT identity values serialized as strings —

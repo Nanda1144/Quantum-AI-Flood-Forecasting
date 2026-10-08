@@ -10,11 +10,11 @@ This service exposes the forecasting pipeline through a **stable REST
 contract**. Nanda's Node backend (`../backend`) is its only consumer; the
 browser never talks to it directly.
 
-> **Ownership boundary:** Navya owns the actual forecasting models
+> **Ownership boundary:** The forecasting module owns the actual forecasting models
 > (XGBoost / LSTM / GRU). This package is the *integration seam*: it defines
 > the `ForecastEngine` protocol and ships a **reference engine** that produces
 > deterministic sample forecasts so the platform works end-to-end. It does
-> **not** train or fit any model, and it does not re-implement Navya's
+> **not** train or fit any model, and it does not re-implement the
 > pipeline. Navya swaps in her engine behind the protocol — the REST contract,
 > the Node backend, and the frontend stay untouched.
 
@@ -78,7 +78,7 @@ All responses use the shared envelope (`{ success, data, timestamp }`; errors:
 The Node backend maps this snake_case payload into the camelCase contract the
 frontend already consumes (see `backend/src/types`).
 
-## Pluggable engine (Navya's seam)
+## Pluggable engine (the seam)
 
 The active engine is resolved by `app/engines/factory.py`:
 
@@ -124,7 +124,7 @@ tests/test_contract.py      # envelope + payload contract tests
 | --- | --- | --- |
 | `AI_SERVICE_HOST` | `0.0.0.0` | Listener host. |
 | `AI_SERVICE_PORT` | `8000` | Listener port (the Node backend calls this). |
-| `FORECAST_ENGINE` | `reference` | Engine resolver — see [Pluggable engine](#pluggable-engine-navyas-seam). |
+| `FORECAST_ENGINE` | `reference` | Engine resolver — see [Pluggable engine](#pluggable-engine-the-seam). |
 | `AI_SERVICE_CORS_ORIGINS` | `*` | Comma-separated allowed origins. |
 
 ## Related

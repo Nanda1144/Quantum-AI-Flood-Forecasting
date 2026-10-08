@@ -3,3 +3,13 @@ uvicorn[standard]==0.40.0
 pydantic==2.13.5
 pytest==9.0.2
 httpx==0.28.1
+
+# Hydrological forecasting engine (`app/engines/hydro/`).
+# Register item AI-REQ-01 in docs/forecasting/TEAM_INTEGRATION_REQUIREMENTS.md,
+# closed during team-branch integration. Source of truth for the optional
+# extras (scikit-learn, xgboost) stays `app/engines/hydro/requirements-hydro.txt`.
+numpy>=1.26
+pandas>=2.1
+# Unlocks the `random_forest` / `gradient_boosting` registry candidates.
+# Without it the pipeline still runs and reports both as unavailable.
+# scikit-learn>=1.3

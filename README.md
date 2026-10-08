@@ -47,7 +47,7 @@ forecast data **only through the service APIs**.
 ┌───────▼──────────────────────────┐         ┌────────────────────────┐
 │   ai-service (FastAPI :8000)     │◄───────►│        PostgreSQL      │
 │   forecasting engine contract    │ sync    │ forecasts · models ·   │
-│   (Navya's engine plugs in here) │         │ optimization jobs      │
+│   (the engine plugs in here) │         │ optimization jobs      │
 └──────────────────────────────────┘         └────────────────────────┘
 ```
 
@@ -123,14 +123,14 @@ Clear ownership boundaries keep the AI and ML concerns separate:
 | Area | Owner | Scope |
 | --- | --- | --- |
 | **AI integration (this work)** | Nanda | `backend` (Node gateway: analytics API, auth/RBAC, validation) + `ai-service` (FastAPI contract service) + `frontend` AI Analytics page, routing, state, components |
-| **Forecasting / training pipeline** | Navya | Model training, feature engineering, live inference — implemented as a `ForecastEngine` behind `ai-service` (XGBoost/LSTM/GRU swap without touching the API) |
+| **Forecasting / training pipeline** | Forecasting | Model training, feature engineering, live inference — implemented as a `ForecastEngine` behind `ai-service` (XGBoost/LSTM/GRU swap without touching the API) |
 | **Quantum optimization** | Nanda | `backend` (optimization orchestration service, `/api/optimization/*` routes, ownership/fallback policy, job persistence) + `quantum-service` (QUBO construction & QAOA execution contract) |
 | **GIS / IoT / database / deployment** | — | Supporting infrastructure modules |
 
 The Node backend and `ai-service` implement **no ML training or forecasting
 pipeline**. `ai-service` defines the *integration contract* (a
 `ForecastEngine` protocol) that today is satisfied by a deterministic
-reference engine. When Navya's pipeline provides an engine, it is registered
+reference engine. When the pipeline provides an engine, it is registered
 in `ai-service` (`FORECAST_ENGINE=<module>:<Class>`), and the REST contract
 consumed by the Node backend stays unchanged.
 
@@ -142,7 +142,7 @@ consumed by the Node backend stays unchanged.
 | --- | --- |
 | `frontend/` | React + TypeScript + Vite + Tailwind command-center UI |
 | `backend/` | **Node/Express API gateway** — AI analytics endpoints, auth/RBAC, rate limiting, validation, PostgreSQL persistence |
-| `ai-service/` | **FastAPI forecasting service** — stable REST contract + `ForecastEngine` seam for Navya's pipeline |
+| `ai-service/` | **FastAPI forecasting service** — stable REST contract + `ForecastEngine` seam for the pipeline |
 | `quantum-service/` | **FastAPI QUBO/QAOA service** — deterministic reference executor for `POST /quantum/qubo` (sensor-placement *and* generic payloads), `GET /quantum/qubo/:id`, `/quantum/qubo/:id/variables`, `/quantum/qubo/:id/constraints`, `POST /quantum/optimize`, `GET /quantum/result/:id` |
 | `database/` | **Schema & persistence** — reverse migrations, model registry (`model_versions`/`model_metrics`), dev-marked seeds |
 | `gis/` | Geospatial data module — contract defined (`/api/optimization/inputs` candidate sites); implementation planned, see `gis/README.md` |
@@ -366,7 +366,7 @@ the `README.md` inside each module for details.
 | --- | --- | --- |
 | `AI_SERVICE_HOST` | `0.0.0.0` | Listener host. |
 | `AI_SERVICE_PORT` | `8000` | Listener port (the Node backend calls this). |
-| `FORECAST_ENGINE` | `reference` | `reference` for the deterministic engine, or `<module>:<Class>` for Navya's live pipeline. |
+| `FORECAST_ENGINE` | `reference` | `reference` for the deterministic engine, or `<module>:<Class>` for the live pipeline. |
 
 ---
 

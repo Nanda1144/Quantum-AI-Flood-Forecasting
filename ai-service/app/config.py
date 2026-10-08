@@ -1,8 +1,7 @@
 # Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
-# Module: ai-service | Owner: Nanda (API contract) + Navya (engine seam) | License: Apache-2.0
+# Module: ai-service | Owner: Nanda (API contract) | License: Apache-2.0
 #
-# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction -
-# Nanda & Navya). It is honest by construction, per the platform README:
+# PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README:
 # no fabricated data, no invented metrics, every surrogate or fallback is
 # clearly labelled, and no quantum speedup is ever claimed.
 
@@ -27,7 +26,7 @@ HOST = os.environ.get("AI_SERVICE_HOST", "0.0.0.0")
 PORT = _int("AI_SERVICE_PORT", 8000)
 
 # "reference" runs the deterministic contract engine. Set to the dotted import
-# path of your own engine class to use Navya's live pipeline instead, e.g.
+# path of your own engine class to use the live pipeline instead, e.g.
 #   FORECAST_ENGINE=qflare.engines.gru:GruFloodNetEngine
 FORECAST_ENGINE = os.environ.get("FORECAST_ENGINE", "reference")
 

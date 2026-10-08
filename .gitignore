@@ -1,27 +1,47 @@
-# Dependencies / build artifacts
+# === Dependencies / build artifacts ===
 node_modules/
 dist/
 build/
+coverage/
+*.tsbuildinfo
+
+# === Python ===
 .venv/
+venv/
 __pycache__/
 *.pyc
+*.py[cod]
 .pytest_cache/
 *.egg-info/
 
-# Local environment
+# === Local environment / credentials ===
+# Never commit credentials. *.pem in particular is a private key / certificate.
 .env
 .env.local
 .env.production
+.env.*
+!.env.example
 *.pem
 
-# One-off operator scratch scripts (may embed real connection strings — never commit)
+# === One-off operator scratch scripts ===
+# (may embed real connection strings - never commit)
 backend/check_*.mjs
 backend/*.scratch.*
 backend/e2e-persistence.scratch.ps1
 
-# Logs
+# === Logs ===
 *.log
+npm-debug.log*
+yarn-error.log*
 
-# OS / editor
+# === OS / editor ===
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# === Local clutter (untracked, project-local only) ===
+# Removed nested clone + empty zip on 2026-09-22 during cleanup.
+# These rules prevent accidental re-addition / noise.
+Quantum-AI-Flood-Forecasting/
+*.zip

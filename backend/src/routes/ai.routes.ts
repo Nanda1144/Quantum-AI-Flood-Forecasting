@@ -2,7 +2,7 @@
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
  * Module: backend | Owner: Nanda | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
 import { Router } from 'express'
@@ -13,6 +13,7 @@ import { authenticate } from '../middleware/authorize.ts'
 import {
   compareModelsBodySchema,
   comparisonQuerySchema,
+  latestForecastQuerySchema,
   listModelsQuerySchema,
   listPredictionsQuerySchema,
   modelDetailParamsSchema,
@@ -123,6 +124,25 @@ export function aiRoutes(c: Container): Router {
     try {
       const { id } = req.validated!.params as z.infer<typeof modelDetailParamsSchema>
       res.json(success(await c.modelsRegistry.getMetricHistory(id)))
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  /**
+   * GET /api/ai/forecast — the live forecast record, served exactly as the AI
+   * service sends it.
+   *
+   * This is the seam the forecasting module (`src/features/forecasting`) reads.
+   * It is a pass-through on purpose: no field is renamed, defaulted, smoothed or
+   * re-derived here, so the provenance/threshold/metric fields a forecasting
+   * engine adds are visible to the client the moment the AI contract carries
+   * them. Anything this endpoint cannot know is absent, not guessed.
+   */
+  router.get('/forecast', validate({ query: latestForecastQuerySchema }), async (req, res, next) => {
+    try {
+      const q = req.validated!.query as z.infer<typeof latestForecastQuerySchema>
+      res.json(success(await c.aiClient.getLatestForecast(q.horizon_hours)))
     } catch (error) {
       next(error)
     }

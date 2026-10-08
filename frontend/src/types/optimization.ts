@@ -2,7 +2,7 @@
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
  * Module: frontend | Owner: Nanda | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
 /**
@@ -15,8 +15,8 @@
  *    APIs (endpoints documented in the adapter file).
  *
  * Inputs are always provided by external modules: forecast data by the AI
- * /Navya's forecasting service, candidate locations + coverage by the GIS
- * /Jahnavi module, resource constraints by the planning/Thoshish module.
+ * /the forecasting service, candidate locations + coverage by the GIS
+ * /GIS module, resource constraints by the planning module.
  * None of those systems are built inside this page.
  */
 
@@ -70,7 +70,7 @@ export interface ProblemTypeSpec {
 }
 
 /**
- * One candidate sensor location from the GIS module (Jahnavi). All fields are
+ * One candidate sensor location from the GIS module. All fields are
  * already validated float metrics in [0, 1]; the optimizer only consumes them.
  */
 export interface CandidateLocation {
@@ -95,7 +95,7 @@ export interface CoverageRequirement {
 
 /**
  * Resource constraints consumed by the optimizer. They originate from the
- * planning module (Thoshish) and/or the operator's Step 1 configuration.
+ * planning module (planning module) and/or the operator's Step 1 configuration.
  */
 export interface ResourceConstraints {
   maxSensors: number

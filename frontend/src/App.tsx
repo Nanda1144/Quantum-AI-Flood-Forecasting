@@ -2,11 +2,12 @@
  * Q-FLARE - Quantum-AI Flood Forecasting & Disaster-Response Platform
  * Module: frontend | Owner: Nanda | License: Apache-2.0
  *
- * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction - Nanda & Navya). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
+ * PLEDGE: This source file belongs to the Q-FLARE platform (Nanda Construction). It is honest by construction, per the platform README: no fabricated data, no invented metrics, every surrogate or fallback is clearly labelled, and no quantum speedup is ever claimed.
  */
 
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { AIAnalyticsDashboard } from './pages/AIAnalyticsDashboard'
+import { ForecastingDashboard } from './pages/ForecastingDashboard'
 import { QuantumOptimization } from './pages/QuantumOptimization'
 import { ModelComparison } from './pages/ModelComparison'
 import { QuboVisualization } from './pages/QuboVisualization'
@@ -16,7 +17,7 @@ import { OptimizationResult } from './pages/OptimizationResult'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, useAuth } from './auth/AuthContext'
-import { BrainCircuit, GitCompare, LogOut, Rocket, Scale, type LucideIcon } from 'lucide-react'
+import { BrainCircuit, CloudRain, GitCompare, LogOut, Rocket, Scale, type LucideIcon } from 'lucide-react'
 
 function NavLink({ to, children, icon: Icon }: { to: string; children: React.ReactNode; icon: LucideIcon }) {
   const location = useLocation()
@@ -44,6 +45,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-[1440px] items-center gap-1 px-4 py-2.5 sm:px-6 lg:px-10">
           <span className="mr-3 text-sm font-bold tracking-tight text-emerald-400">Q-FLARE</span>
           <NavLink to="/" icon={BrainCircuit}>AI Analytics</NavLink>
+          <NavLink to="/forecasting" icon={CloudRain}>Flood Forecasting</NavLink>
           <NavLink to="/model-comparison" icon={GitCompare}>Model Comparison</NavLink>
           <NavLink to="/quantum-optimization" icon={Rocket}>Quantum Optimization</NavLink>
           <NavLink to="/quantum-benchmark" icon={Scale}>Quantum Benchmark</NavLink>
@@ -89,6 +91,7 @@ function Shell() {
       <ErrorBoundary>
         <Routes>
           <Route path="/" element={<AIAnalyticsDashboard />} />
+          <Route path="/forecasting" element={<ForecastingDashboard />} />
           <Route path="/model-comparison" element={<ModelComparison />} />
           <Route path="/quantum-optimization" element={<QuantumOptimization />} />
           <Route path="/quantum-benchmark" element={<QuantumBenchmark />} />

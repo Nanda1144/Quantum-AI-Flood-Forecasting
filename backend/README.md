@@ -28,7 +28,7 @@ leave the server.
 | Concern | Owner | Notes |
 | --- | --- | --- |
 | Node gateway, API surface, auth, RBAC, rate limiting | Nanda | This module |
-| Forecasting models (XGBoost / LSTM / GRU) | Navya | Implemented behind the `ForecastEngine` protocol in `../ai-service`; swapped independently of this module |
+| Forecasting models (XGBoost / LSTM / GRU) | Forecasting | Implemented behind the `ForecastEngine` protocol in `../ai-service`; swapped independently of this module |
 | Quantum optimization orchestration | Nanda | This module — `/api/optimization/*` pipeline, job store, fallback policy, plus the `../quantum-service` executor contract it is the only consumer of |
 
 ## Quick start
@@ -407,7 +407,7 @@ plus the optimization codes: `JOB_NOT_FOUND` (404), `RESULT_NOT_FOUND` (404),
   server-side configuration. Nothing is shipped to the browser; there are no
   API keys in the React bundle.
 
-## Integration contract (Navya's seam)
+## Integration contract (the seam)
 
 This gateway depends only on the **payload shapes** of the FastAPI service
 (`src/types/contract.ts`), reached through the single
@@ -491,5 +491,5 @@ src/
 
 ## Related
 
-- [`../ai-service/README.md`](../ai-service/README.md) — FastAPI forecasting contract (Navya's engine seam)
+- [`../ai-service/README.md`](../ai-service/README.md) — FastAPI forecasting contract (the engine seam)
 - [`../frontend/README.md`](../frontend/README.md) — React command center that consumes this API

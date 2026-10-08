@@ -13,7 +13,7 @@ Index of Q-FLARE design documentation and architecture decision records
 | Platform architecture, data flow, module ownership, quick start, config | [`../README.md`](../README.md) |
 | Node API gateway — endpoint reference, error codes, security model, fallback policy, persistence | [`../backend/README.md`](../backend/README.md) |
 | Frontend command center — pages, adapters, accessibility, test suites | [`../frontend/README.md`](../frontend/README.md) |
-| AI forecasting contract + `ForecastEngine` seam (Navya's pipeline) | [`../ai-service/README.md`](../ai-service/README.md) |
+| AI forecasting contract + `ForecastEngine` seam (the pipeline) | [`../ai-service/README.md`](../ai-service/README.md) |
 | QUBO/QAOA service — payload families, job lifecycle, execution backends | [`../quantum-service/README.md`](../quantum-service/README.md) |
 | PostgreSQL schema, migrations, seeds, delete protection | [`../database/README.md`](../database/README.md) |
 | Run topology, GitHub Pages workflows, secrets hygiene | [`../deployment/README.md`](../deployment/README.md) |

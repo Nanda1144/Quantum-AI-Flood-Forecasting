@@ -22,7 +22,7 @@ bootstraps a fresh database automatically.
 | `quantum_jobs` | **Nanda** | Quantum job persistence **operational record** (006), one row per **real** submission the backend drives through the quantum FastAPI service (`id` is the service's own job id). Stores what was asked for (`algorithm`, `backend`, `execution_mode`, `shots`, `layers`), the resolved `qubits`, the lifecycle `status`, audit timestamps (`submitted_at`/`started_at`/`completed_at`) and `error_code`/`error_message`. Indexes on `optimization_job_id`, `status` and `created_at`. FK → `optimization_jobs(id)` ON DELETE CASCADE. |
 | `quantum_results` | **Nanda** | One normalized row per **completed** quantum job (006). `id` must equal `<quantum_job_id>-R1` (one row per job). Stores the decoded `bitstring`, plain-JSON `counts`, `objective_value`, `runtime_ms` and an optional artifact `raw_metadata_reference` — raw circuits are never embedded. FK → `quantum_jobs(id)` ON DELETE CASCADE. |
 
-Navya's forecasting/training pipeline owns the model training artifacts and any
+the forecasting/training pipeline owns the model training artifacts and any
 pipeline-internal tables. This module *never* recreates them: lineage is traced
 through stable references only — `dataset_reference` /
 `model_artifact_reference` on `model_versions`, and `forecast_id` on

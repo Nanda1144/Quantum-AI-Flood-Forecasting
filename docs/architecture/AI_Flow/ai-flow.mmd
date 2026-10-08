@@ -1,0 +1,51 @@
+flowchart TD
+  I1["Input<br/>feature matrix from the chronological split<br/>23 features in the realized synthetic run"]
+  I2["Preprocessing<br/>train-fitted imputer and scaler only<br/>no target in the feature set"]
+
+  I1 --> I2
+
+  subgraph CAND["Candidate models - registry contains only executable models"]
+    C1["Ridge regression<br/>MY IMPLEMENTATION - selected in the realized run"]
+    C2["XGBoost<br/>MY IMPLEMENTATION - optional dependency<br/>skip is reported, never silently substituted"]
+    C3["Random Forest<br/>NOT CURRENTLY AVAILABLE - research candidate"]
+    C4["LSTM / GRU<br/>NOT CURRENTLY AVAILABLE - future work, not implemented"]
+    C5["Quantum ML<br/>NOT CURRENTLY AVAILABLE - research only, not implemented"]
+  end
+
+  I2 --> C1
+  I2 --> C2
+  I2 -.-> C3
+  I2 -.-> C4
+  I2 -.-> C5
+
+  C1 --> V1["VALIDATION split<br/>the only split used for ranking"]
+  C2 --> V1
+  V1 --> SEL["Model selection<br/>lowest validation MAE, tie-broken on RMSE<br/>TEST split is never consulted"]
+
+  SEL --> T1["TEST split<br/>scored EXACTLY ONCE by the selected model<br/>never influences ranking"]
+
+  T1 --> F1["Selected forecast output"]
+  F1 --> M1["Metrics, split-labelled<br/>train and validation metrics refused as results"]
+  F1 --> U1["Residual sigma<br/>uncertainty signal, not a fabricated interval"]
+  F1 --> R1["Flood risk band<br/>configurable, threshold marked pending"]
+  F1 --> P1["Provenance<br/>dataset type, licence, checksum, station, horizon"]
+
+  M1 --> G1{"Guards: may these metrics<br/>be shown as a result?"}
+  G1 -->|held-out test, real data| GY["Presentable, with the synthetic/demo label if synthetic"]
+  G1 -->|train or validation split| GN["Refused - rendered as a fit statistic"]
+  G1 -->|synthetic data| GS["Shown only with the mandatory synthetic/demo label"]
+  G1 -->|no metrics| GM["Nothing is displayed in place of a metric"]
+
+  R1 --> H1["Downstream optimization handoff<br/>forecast_id to team optimization<br/>PROPOSED INTEGRATION for provenance and risk fields"]
+  U1 --> H1
+  P1 --> H1
+
+  classDef navya fill:#0f3d2e,stroke:#34d399,color:#ecfdf5
+  classDef missing fill:#3f1d2e,stroke:#fb7185,color:#ffe4e6,stroke-dasharray:5 5
+  classDef proposed fill:#3b2f14,stroke:#fbbf24,color:#fef3c7,stroke-dasharray:4 4
+  classDef guard fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff
+
+  class I1,I2,C1,C2,V1,SEL,T1,F1,M1,U1,R1,P1,GY,GN,GS,GM navya
+  class G1 guard
+  class H1 proposed
+  class C3,C4,C5 missing
