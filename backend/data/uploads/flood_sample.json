@@ -1,0 +1,42 @@
+[
+  {
+    "date": "2026-09-18",
+    "location": "Vijayawada",
+    "rainfall_mm": 42.6,
+    "river_level_m": 12.4,
+    "temperature_c": 29.1,
+    "flow_rate_m3s": 842
+  },
+  {
+    "date": "2026-09-18",
+    "location": "Rajahmundry",
+    "rainfall_mm": 38.2,
+    "river_level_m": 11.8,
+    "temperature_c": 28.7,
+    "flow_rate_m3s": 765
+  },
+  {
+    "date": "2026-09-17",
+    "location": "Amalapuram",
+    "rainfall_mm": 51.4,
+    "river_level_m": 10.9,
+    "temperature_c": 30.2,
+    "flow_rate_m3s": 698
+  },
+  {
+    "date": "2026-09-17",
+    "location": "Eluru",
+    "rainfall_mm": 31.7,
+    "river_level_m": 9.6,
+    "temperature_c": 29.8,
+    "flow_rate_m3s": 621
+  },
+  {
+    "date": "2026-09-16",
+    "location": "Machilipatnam",
+    "rainfall_mm": 27.5,
+    "river_level_m": 8.9,
+    "temperature_c": 29.4,
+    "flow_rate_m3s": 580
+  }
+]
