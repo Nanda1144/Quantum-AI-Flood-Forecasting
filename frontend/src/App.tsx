@@ -16,10 +16,13 @@ import { QuboVisualization } from './pages/QuboVisualization'
 import { QuantumJobStatus } from './pages/QuantumJobStatus'
 import { QuantumBenchmark } from './pages/QuantumBenchmark'
 import { OptimizationResult } from './pages/OptimizationResult'
+import { GISDashboard } from './pages/GISDashboard'
+import { IoTDashboard } from './pages/IoTDashboard'
+import { ResponsePlanningDashboard } from './pages/ResponsePlanningDashboard'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, useAuth } from './auth/AuthContext'
-import { BrainCircuit, CloudRain, GitCompare, LogOut, Rocket, Scale, type LucideIcon } from 'lucide-react'
+import { BrainCircuit, CloudRain, GitCompare, Globe, LogOut, Rocket, Scale, Shield, Wifi, type LucideIcon } from 'lucide-react'
 
 function NavLink({ to, children, icon: Icon }: { to: string; children: React.ReactNode; icon: LucideIcon }) {
   const location = useLocation()
@@ -48,6 +51,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           <span className="mr-3 text-sm font-bold tracking-tight text-emerald-400">Q-FLARE</span>
           <NavLink to="/" icon={BrainCircuit}>AI Analytics</NavLink>
           <NavLink to="/forecasting" icon={CloudRain}>Flood Forecasting</NavLink>
+          <NavLink to="/gis" icon={Globe}>GIS Spatial</NavLink>
+          <NavLink to="/iot" icon={Wifi}>IoT Telemetry</NavLink>
+          <NavLink to="/response" icon={Shield}>Response Planning</NavLink>
           <NavLink to="/model-comparison" icon={GitCompare}>Model Comparison</NavLink>
           <NavLink to="/quantum-optimization" icon={Rocket}>Quantum Optimization</NavLink>
           <NavLink to="/quantum-benchmark" icon={Scale}>Quantum Benchmark</NavLink>
@@ -94,6 +100,9 @@ function Shell() {
         <Routes>
           <Route path="/" element={<AIAnalyticsDashboard />} />
           <Route path="/forecasting" element={<ForecastingDashboard />} />
+          <Route path="/gis" element={<GISDashboard />} />
+          <Route path="/iot" element={<IoTDashboard />} />
+          <Route path="/response" element={<ResponsePlanningDashboard />} />
           <Route path="/model-comparison" element={<ModelComparison />} />
           <Route path="/quantum-optimization" element={<QuantumOptimization />} />
           <Route path="/quantum-benchmark" element={<QuantumBenchmark />} />
