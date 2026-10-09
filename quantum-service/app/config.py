@@ -10,6 +10,21 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    _root_env = Path(__file__).resolve().parent.parent.parent / ".env"
+    _local_env = Path(__file__).resolve().parent.parent / ".env"
+    if _root_env.exists():
+        load_dotenv(dotenv_path=_root_env)
+    elif _local_env.exists():
+        load_dotenv(dotenv_path=_local_env)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
 
 from . import __version__
 

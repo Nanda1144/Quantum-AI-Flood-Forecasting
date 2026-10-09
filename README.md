@@ -258,55 +258,71 @@ backed by a pluggable execution adapter, never by inline logic:
 
 ## Quick start
 
+The entire platform is configured via a **single, unified `.env` file located at the project root**.
+All services (`backend`, `ai-service`, `quantum-service`, and `frontend`) automatically read from this root `.env`.
+
 Prerequisites: **Node.js >= 20**, npm, and Python 3.12+.
 
-### 1. Start the AI FastAPI service
+---
 
+### Step-by-Step Execution Process
+
+#### Step 1: Verify the Unified Environment File
+Ensure the root `.env` file exists at the project root:
 ```sh
+# The root .env contains all unified configuration parameters for:
+# - Backend API Gateway (:3000)
+# - PostgreSQL / Supabase connection
+# - AI Forecasting Service (:8000)
+# - Quantum QAOA Service (:8100)
+# - Frontend Command-Center (:5173)
+```
+
+#### Step 2: Start the AI Forecasting Service (FastAPI)
+In a new terminal window:
+```powershell
 cd ai-service
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt   # (Windows)
-cp .env.example .env
-.venv/Scripts/python -m uvicorn app.main:app --port 8000 # http://localhost:8000
+.venv\Scripts\Activate.ps1               # On Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --port 8000
 ```
+- Endpoint: `http://localhost:8000`
+- Health check: `http://localhost:8000/health`
 
-### 2. Start the quantum-service (optional but recommended)
-
-```sh
+#### Step 3: Start the Quantum Optimization Service (FastAPI)
+In a second terminal window (optional but recommended):
+```powershell
 cd quantum-service
 python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt   # (Windows)
-.venv/Scripts/python -m uvicorn app.main:app --port 8100 # http://localhost:8100
+.venv\Scripts\Activate.ps1               # On Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --port 8100
 ```
+- Endpoint: `http://localhost:8100`
+- Health check: `http://localhost:8100/health`
+- *Note:* If the quantum service is offline, the backend's resilient fallback policy (`retry_simulator`) automatically completes optimization requests against the classical reference benchmark.
 
-The reference executor is a deterministic QAOA surrogate (always labelled
-`simulated`); without it the backend's fallback policy still finishes every
-optimization job against the stored classical reference.
-
-### 3. Start the Node backend gateway
-
-```sh
+#### Step 4: Start the Node.js API Gateway (Backend)
+In a third terminal window:
+```powershell
 cd backend
-cp .env.example .env
 npm install
-npm run dev                  # http://localhost:3000/api/ai/analytics
+npm run dev
 ```
+- API Gateway Endpoint: `http://localhost:3000`
+- Health / Analytics check: `http://localhost:3000/api/ai/analytics`
+- *Note:* If PostgreSQL is unreachable or `DATABASE_MODE=memory` is specified in `.env`, the backend operates in in-memory mode seamlessly.
 
-### 4. Start the frontend
-
-```sh
+#### Step 5: Start the Frontend Command Center (React + Vite)
+In a fourth terminal window:
+```powershell
 cd frontend
 npm install
-npm run dev                  # http://localhost:5173
+npm run dev
 ```
-
-Open http://localhost:5173 — the dashboard reads live API data proxied to the
-Node backend, which syncs forecasts from the AI service into PostgreSQL. See
-the `README.md` inside each module for details.
-
-> **Note:** PostgreSQL is optional for local demos. If `DATABASE_URL` is
-> unreachable the backend falls back to in-memory repositories
-> (`DATABASE_MODE=memory`), keeping the API fully demonstrable.
+- Open browser at: `http://localhost:5173/Quantum-AI-Flood-Forecasting/` (or `http://localhost:5173`)
+- The UI automatically communicates with the Node backend gateway via Vite's `/api` proxy.
 
 ---
 
@@ -326,47 +342,42 @@ the `README.md` inside each module for details.
 
 ## Configuration
 
-### Frontend environment (`frontend/.env`)
+All configuration is managed from the **single root `.env` file** at `/.env`.
 
-| Variable | Default | Description |
+### Unified Environment Variables (`/.env`)
+
+| Variable | Default / Example | Purpose / Description |
 | --- | --- | --- |
-| `VITE_API_BASE_URL` | `''` | Override the API base URL (same-origin proxy otherwise). |
-| `VITE_USE_MOCK_DATA` | `''` | `'false'` forces live backends even in dev. Unset/other → the AI Analytics sample-data fallback is permitted, but only in dev builds (`import.meta.env.DEV`); the Optimization page selects its mock/http adapter on this same flag. |
+| **System** | | |
+| `NODE_ENV` | `development` | Runtime mode (`development`, `production`, `test`). |
+| **Backend Gateway** | | |
+| `PORT` | `3000` | Gateway HTTP listener port. |
+| `DATABASE_MODE` | `postgres` | `postgres` (live DB) or `memory` (in-memory demo/test). |
+| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string. |
+| `AUTH_ENABLED` | `true` | JWT authentication required (`true` / `false`). |
+| `JWT_SECRET` | *(secret key)* | Signing secret for JSON Web Tokens. |
+| `JWT_EXPIRES_IN` | `800h` | Expiration window for issued JWT tokens. |
+| `FRESHNESS_STALE_MS` | `90000` | Staleness window (ms) for forecast telemetry. |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Time window for API gateway rate limiter. |
+| `RATE_LIMIT_MAX` | `1200` | Maximum requests per IP in the rate-limit window. |
+| `MODEL_SELECTION_METRIC` | `r2` | Model registry metric ranker (`r2`, `mae`, `rmse`, `nse`). |
+| **AI Service** | | |
+| `AI_SERVICE_HOST` | `0.0.0.0` | AI service bind host. |
+| `AI_SERVICE_PORT` | `8000` | AI service listener port. |
+| `AI_SERVICE_URL` | `http://localhost:8000` | URL used by Node gateway to contact AI service. |
+| `FORECAST_ENGINE` | `reference` | Forecasting model engine (`reference` or live class). |
+| `AI_SERVICE_CORS_ORIGINS`| `*` | Allowed CORS origins for AI service. |
+| **Quantum Service** | | |
+| `QUANTUM_SERVICE_HOST` | `0.0.0.0` | Quantum service bind host. |
+| `QUANTUM_SERVICE_PORT` | `8100` | Quantum service listener port. |
+| `QUANTUM_SERVICE_URL` | `http://localhost:8100` | URL used by Node gateway to contact Quantum service. |
+| `OPTIMIZATION_FALLBACK_POLICY` | `retry_simulator` | Fallback policy (`retry_simulator`, `classical_only`, `error`). |
+| `OPTIMIZATION_EXECUTION_TIMEOUT_MS` | `120000` | Max job execution timeout (ms). |
+| `OPTIMIZATION_EXHAUSTIVE_LIMIT` | `18` | Candidate limit for classical solver. |
+| **Frontend UI** | | |
+| `VITE_API_BASE_URL` | `''` | API base URL (empty uses Vite `/api` proxy). |
+| `VITE_USE_MOCK_DATA` | `false` | Set to `false` for live backend data. |
 
-### backend environment (`backend/.env`)
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PORT` | `3000` | HTTP port (Vite proxy target). |
-| `DATABASE_MODE` | `postgres` | `postgres` or `memory`. |
-| `DATABASE_URL` | `postgresql://qflare:qflare@localhost:5432/qflare` | PostgreSQL connection. |
-| `AUTH_ENABLED` | `true` | `false` only for no-auth local demos. |
-| `JWT_SECRET` | dev default | Change in production; never shipped to the client. |
-| `AI_SERVICE_URL` | `http://localhost:8000` | FastAPI forecasting service. |
-| `FRESHNESS_STALE_MS` | `90000` | Staleness threshold driving the stale banner/degraded status. |
-| `QUANTUM_SERVICE_URL` | `http://localhost:8100` | QUBO/QAOA FastAPI service. |
-| `OPTIMIZATION_FALLBACK_POLICY` | `retry_simulator` | `retry_simulator` · `classical_only` · `error` when a quantum executor fails. |
-| `OPTIMIZATION_EXECUTION_TIMEOUT_MS` | `120000` | Wall-clock cap on one optimization job. |
-| `OPTIMIZATION_EXHAUSTIVE_LIMIT` | `18` | Candidate cap for the exhaustive classical reference solver. |
-| `OPTIMIZATION_RUN_LIMIT_MAX` | `10` | Per-window cap on `POST /run`. |
-
-### quantum-service environment (`quantum-service/.env`)
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `QUANTUM_SERVICE_HOST` / `PORT` | `0.0.0.0` / `8100` | Listener (the Node backend calls this). |
-| `QUANTUM_QUBO_DISABLED` | `false` | Force the QUBO endpoint to 503 (fallback drill). |
-| `QUANTUM_FORCE_AER_DOWN` | `false` | Force Aer executor to 503 (fallback drill). |
-| `QUANTUM_FORCE_HARDWARE_DOWN` | `false` | Force IBM executor to 503 (fallback drill). |
-| `QISKIT_IBM_TOKEN` | _(empty)_ | IBM Quantum token when a live QPU is configured.
-
-### ai-service environment (`ai-service/.env`)
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `AI_SERVICE_HOST` | `0.0.0.0` | Listener host. |
-| `AI_SERVICE_PORT` | `8000` | Listener port (the Node backend calls this). |
-| `FORECAST_ENGINE` | `reference` | `reference` for the deterministic engine, or `<module>:<Class>` for the live pipeline. |
 
 ---
 

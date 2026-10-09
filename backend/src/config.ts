@@ -12,10 +12,27 @@
  * server-side only and loaded via dotenv from the service's `.env`.
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { config as dotenvConfig } from 'dotenv'
 import { z } from 'zod'
 
-dotenvConfig()
+// Load unified root .env file, with fallback to cwd or parent paths
+const rootEnvPath = path.resolve(fileURLToPath(new URL('../../.env', import.meta.url)))
+const cwdEnvPath = path.resolve(process.cwd(), '.env')
+const parentEnvPath = path.resolve(process.cwd(), '../.env')
+
+if (fs.existsSync(rootEnvPath)) {
+  dotenvConfig({ path: rootEnvPath })
+} else if (fs.existsSync(cwdEnvPath)) {
+  dotenvConfig({ path: cwdEnvPath })
+} else if (fs.existsSync(parentEnvPath)) {
+  dotenvConfig({ path: parentEnvPath })
+} else {
+  dotenvConfig()
+}
+
 
 /** Role model for RBAC. */
 export type Role = 'admin' | 'operator' | 'viewer'
