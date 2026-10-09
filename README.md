@@ -210,7 +210,7 @@ All sub-services (`backend`, `ai-service`, `quantum-service`, and `frontend`) lo
 | **Backend** | `PORT` | `3000` | HTTP listener port for the Node.js API Gateway. |
 | **Backend** | `DATABASE_MODE` | `postgres` | `postgres` for live PostgreSQL/Supabase; `memory` for standalone demo/tests. |
 | **Backend** | `DATABASE_URL` | `postgresql://...` | Connection string for PostgreSQL database. |
-| **Backend** | `AUTH_ENABLED` | `true` | When `true`, all `/api` endpoints require JWT bearer tokens. |
+| **Backend** | `AUTH_ENABLED` | `false` | When `false`, all features are directly accessible (no login required). Set to `true` to enable JWT-gated access. |
 | **Backend** | `JWT_SECRET` | *(32+ char secret)* | Secret key used to sign and verify JSON Web Tokens. |
 | **Backend** | `JWT_EXPIRES_IN` | `800h` | Lifetime window for issued authentication tokens. |
 | **Backend** | `FRESHNESS_STALE_MS` | `90000` | Telemetry staleness threshold in ms (triggers degraded warning). |
@@ -331,7 +331,7 @@ npm run dev
 ```
 - **Gateway Console Output**:
   ```text
-  [backend] listening on http://localhost:3000 (auth: enabled, mode: postgres)
+  [backend] listening on http://localhost:3000 (auth: disabled, mode: postgres)
   ```
 - **Check Analytics Endpoint**: Open `http://localhost:3000/api/ai/analytics` in your browser.
 
@@ -352,14 +352,23 @@ npm run dev
 
 ---
 
-### Step 6: Log In to the Command Center
-If authentication is enabled (`AUTH_ENABLED=true`), use any of the preconfigured role accounts:
+### Step 6: Direct Access — No Login Required
 
-| Role | Username | Password | Permissions |
-| :--- | :--- | :--- | :--- |
-| **Administrator** | `admin` | `qflare-admin` | Full read, write, run optimization, view audits, soft-delete. |
-| **Operator** | `operator` | `qflare-operator` | Read, execute forecasts, trigger quantum optimization jobs. |
-| **Viewer** | `viewer` | `qflare-viewer` | Read-only inspection of dashboards, metrics, and models. |
+Q-FLARE runs in **Direct Command Center** mode by default (`AUTH_ENABLED=false`).
+All 8 feature modules are immediately accessible from the navigation bar without any credentials:
+
+| Dashboard | URL Path | Description |
+| :--- | :--- | :--- |
+| AI Analytics | `/` | Flood probability, risk classification, model metrics |
+| Flood Forecasting | `/forecasting` | 24–72h water level horizon predictions |
+| GIS Spatial | `/gis` | River basin maps, 3D DEM, flood inundation layers |
+| IoT Telemetry | `/iot` | Real-time sensor stream, gauge health, alert feeds |
+| Response Planning | `/response` | Shelter routing, evacuation corridors, resource dispatch |
+| Model Comparison | `/model-comparison` | Multi-model benchmark leaderboard (GRU, LSTM, XGBoost) |
+| Quantum Optimization | `/quantum-optimization` | QAOA sensor placement, QUBO matrix visualizer |
+| Quantum Benchmark | `/quantum-benchmark` | Quantum vs classical solver performance comparison |
+
+> **Note:** To re-enable JWT-based role authentication, set `AUTH_ENABLED=true` in the root `.env` and restart the backend. Pre-configured role accounts — `admin / qflare-admin`, `operator / qflare-operator`, `viewer / qflare-viewer` — remain available for secure deployments.
 
 ---
 
