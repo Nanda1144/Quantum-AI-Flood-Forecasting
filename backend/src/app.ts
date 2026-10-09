@@ -32,6 +32,28 @@ export async function createApp(container?: Container): Promise<express.Express>
   app.use(express.json({ limit: '64kb' }))
   app.use(apiLimiter)
 
+  // Root and favicon routes for browser navigation convenience
+  app.get('/favicon.ico', (_req, res) => {
+    res.setHeader('Content-Type', 'image/svg+xml')
+    res.send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌊</text></svg>')
+  })
+
+  app.get('/', (_req, res) => {
+    res.json(success({
+      service: 'q-flare-backend-gateway',
+      version: '1.0.0',
+      status: 'online',
+      description: 'Q-FLARE Node.js API Gateway & Optimization Orchestrator',
+      endpoints: {
+        frontend: 'http://localhost:5173/Quantum-AI-Flood-Forecasting/',
+        analytics: '/api/ai/analytics',
+        forecast: '/api/forecast',
+        optimization: '/api/optimization/run',
+        health: '/api/health',
+      },
+    }))
+  })
+
   // Health check endpoints
   app.get('/api/health', (_req, res) => {
     res.json(success({ service: 'backend', status: 'ok' }))
