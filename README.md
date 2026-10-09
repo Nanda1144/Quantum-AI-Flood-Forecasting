@@ -247,6 +247,115 @@ All sub-services (`backend`, `ai-service`, `quantum-service`, and `frontend`) lo
 
 ---
 
+### 🔑 How to Obtain Each `.env` Value — Platform by Platform
+
+#### 🗄️ Section 1: Database — `DATABASE_URL` (Supabase PostgreSQL)
+
+**Step 1:** Go to [https://supabase.com](https://supabase.com) → Sign up or log in.
+
+**Step 2:** Create a new project (or open an existing one).
+
+**Step 3:** In the Supabase dashboard, navigate to:
+```
+Settings → Database → Connection Pooling
+```
+
+**Step 4:** Copy the **Connection String** in "Transaction" mode:
+```
+postgresql://postgres.<project-ref>:<your-password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+```
+
+**Step 5:** Paste it as the `DATABASE_URL` value in your root `.env` file.
+
+> **Tip:** If you prefer direct connections (non-pooled), use port `5432` from `Settings → Database → Connection info → Direct connection`.
+
+---
+
+#### 🔐 Section 2: Authentication — `JWT_SECRET`
+
+Generate a secure random secret using one of these methods:
+
+**Option A — PowerShell (Windows):**
+```powershell
+[System.Web.Security.Membership]::GeneratePassword(40, 5)
+# Or simpler:
+-join ((65..90) + (97..122) + (48..57) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+```
+
+**Option B — Node.js (any terminal):**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Option C — OpenSSL:**
+```bash
+openssl rand -hex 32
+```
+
+Paste the output as `JWT_SECRET` in `.env`. **Minimum 16 characters required; 32+ strongly recommended.**
+
+---
+
+#### ⚛️ Section 3: IBM Quantum Token — `QISKIT_IBM_TOKEN`
+
+> This is **optional** — leave blank `""` to use the local Qiskit Aer simulator (no hardware required).
+
+**Step 1:** Go to [https://quantum.ibm.com](https://quantum.ibm.com) → Create a free IBM account.
+
+**Step 2:** After login, click your profile icon → **"Copy token"** from the dashboard.
+
+**Step 3:** Paste into `.env`:
+```
+QISKIT_IBM_TOKEN=your_ibm_quantum_api_token_here
+```
+
+---
+
+#### 🔧 Section 4: No-Setup Variables (use as-is)
+
+These values work out-of-the-box for local development and do **not** require registration anywhere:
+
+| Variable | Why it's OK as-is |
+|---|---|
+| `NODE_ENV=development` | Sets development mode. Change to `production` when deploying. |
+| `PORT=3000` | Default backend port. Only change if 3000 is occupied. |
+| `DATABASE_MODE=postgres` | Change to `memory` to skip the database entirely for demos. |
+| `AUTH_ENABLED=false` | Direct access — no login required. Change to `true` for secured deployments. |
+| `AI_SERVICE_URL=http://localhost:8000` | Works when AI service runs locally on port 8000. |
+| `QUANTUM_SERVICE_URL=http://localhost:8100` | Works when quantum service runs locally on port 8100. |
+| `VITE_API_BASE_URL=` | Empty = Vite dev proxy routes `/api` to `:3000` automatically. |
+| `VITE_USE_MOCK_DATA=false` | `false` means live backend data. Set `true` to demo without backend. |
+| `FORECAST_ENGINE=reference` | Deterministic reference engine (no GPU/model files needed). |
+
+---
+
+#### 📋 Section 5: Minimum Working `.env` for First Run
+
+For a **quick local demo** without a database or quantum hardware, use:
+
+```env
+# Minimum .env to run Q-FLARE locally without external services
+NODE_ENV=development
+PORT=3000
+DATABASE_MODE=memory
+AUTH_ENABLED=false
+JWT_SECRET=dev-local-32chars-change-me-please
+AI_SERVICE_URL=http://localhost:8000
+AI_REQUEST_TIMEOUT_MS=5000
+QUANTUM_SERVICE_URL=http://localhost:8100
+QUANTUM_REQUEST_TIMEOUT_MS=15000
+VITE_API_BASE_URL=
+VITE_USE_MOCK_DATA=true
+FORECAST_ENGINE=reference
+OPTIMIZATION_FALLBACK_POLICY=retry_simulator
+```
+
+> ✅ With this config: All 8 dashboards accessible, no database needed, AI uses deterministic reference engine, Quantum uses local Aer simulator.
+
+---
+
+
+
 ## 🚀 Step-by-Step Execution Guide
 
 Follow these steps to run all 4 microservices simultaneously.

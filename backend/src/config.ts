@@ -59,7 +59,7 @@ const envSchema = z.object({
   AUTH_ENABLED: z
     .enum(['true', 'false'])
     .optional()
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true'),
   JWT_SECRET: z.string().min(16).optional().default('dev-only-change-me-please-32chars'),
   JWT_EXPIRES_IN: z.string().optional().default('8h'),

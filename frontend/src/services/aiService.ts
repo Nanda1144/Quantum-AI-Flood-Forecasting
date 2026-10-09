@@ -281,10 +281,10 @@ export async function loadAIAnalytics(): Promise<AILoadResult> {
     const snapshot = normalizeSnapshot(await fetchJson<AISnapshot>('/api/ai/analytics'))
     return { snapshot, isMock: false }
   } catch (error) {
-    // A 401 is an auth problem, never a connection problem — surface it so the
-    // session is cleared and the login screen returns instead of silently
-    // showing local sample data while still appearing authenticated.
-    if (shouldAllowMockData() && (error as APIError).code !== 'UNAUTHORIZED') {
+    // In direct-access mode (no login required), any backend error including 401
+    // (misconfigured backend) should fall back to clearly-labelled sample data
+    // so the dashboard remains demonstrable while the backend spins up.
+    if (shouldAllowMockData()) {
       // Small delay so the loading skeleton is visible and state transitions are observable.
       await new Promise((resolve) => setTimeout(resolve, 700))
       return { snapshot: normalizeSnapshot(getMockSnapshot()), isMock: true }
