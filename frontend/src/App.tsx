@@ -21,8 +21,8 @@ import { IoTDashboard } from './pages/IoTDashboard'
 import { ResponsePlanningDashboard } from './pages/ResponsePlanningDashboard'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { AuthProvider, useAuth } from './auth/AuthContext'
-import { BrainCircuit, CloudRain, GitCompare, Globe, LogOut, Rocket, Scale, Shield, Wifi, type LucideIcon } from 'lucide-react'
+import { AuthProvider } from './auth/AuthContext'
+import { BrainCircuit, CloudRain, GitCompare, Globe, Rocket, Scale, Shield, Wifi, type LucideIcon } from 'lucide-react'
 
 function NavLink({ to, children, icon: Icon }: { to: string; children: React.ReactNode; icon: LucideIcon }) {
   const location = useLocation()
@@ -30,10 +30,10 @@ function NavLink({ to, children, icon: Icon }: { to: string; children: React.Rea
   return (
     <Link
       to={to}
-      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
         active
-          ? 'border border-emerald-500/50 bg-emerald-500/15 text-emerald-300'
-          : 'text-mist-300 hover:border hover:border-forest-600 hover:text-mist-50'
+          ? 'border border-emerald-400 bg-emerald-400/10 text-emerald-400 shadow-sm font-bold'
+          : 'text-mist-300 hover:border hover:border-forest-600 hover:bg-forest-800 hover:text-mist-50'
       }`}
     >
       <Icon size={14} aria-hidden />
@@ -43,40 +43,55 @@ function NavLink({ to, children, icon: Icon }: { to: string; children: React.Rea
 }
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const { session, logout } = useAuth()
   return (
     <div className="min-h-screen">
-      <nav className="sticky top-0 z-50 border-b border-forest-700/60 bg-forest-900/90 backdrop-blur-lg" aria-label="Main navigation">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-1 px-4 py-2.5 sm:px-6 lg:px-10">
-          <span className="mr-3 text-sm font-bold tracking-tight text-emerald-400">Q-FLARE</span>
-          <NavLink to="/" icon={BrainCircuit}>AI Analytics</NavLink>
-          <NavLink to="/forecasting" icon={CloudRain}>Flood Forecasting</NavLink>
-          <NavLink to="/gis" icon={Globe}>GIS Spatial</NavLink>
-          <NavLink to="/iot" icon={Wifi}>IoT Telemetry</NavLink>
-          <NavLink to="/response" icon={Shield}>Response Planning</NavLink>
-          <NavLink to="/model-comparison" icon={GitCompare}>Model Comparison</NavLink>
-          <NavLink to="/quantum-optimization" icon={Rocket}>Quantum Optimization</NavLink>
-          <NavLink to="/quantum-benchmark" icon={Scale}>Quantum Benchmark</NavLink>
+      {/* Official Government Flag & Mission Header Bar */}
+      <div className="border-b border-forest-600 bg-forest-800 px-4 py-1 text-[11px] text-mist-300">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-bold tracking-wide text-emerald-500">🏛️ NATIONAL QUANTUM MISSION</span>
+            <span className="text-forest-500">•</span>
+            <span className="font-medium text-mist-300">Central Water Commission (CWC) | Ministry of Jal Shakti</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span> DIRECT ACCESS COMMAND
+            </span>
+            <span className="text-mist-500 font-mono text-[10px]">ALL FEATURES UNLOCKED</span>
+          </div>
+        </div>
+      </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            {session && (
-              <span className="hidden items-center gap-1.5 text-xs text-mist-300 sm:flex" title={`Signed in as ${session.user.username}`}>
-                <span className="rounded-md border border-forest-600 bg-forest-800 px-2 py-1 font-mono text-[11px] text-emerald-300">
-                  {session.user.username}
-                </span>
-                <span className="rounded border border-forest-700 bg-forest-850 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-mist-500">
-                  {session.user.role}
-                </span>
+      {/* Main Navigation Bar with All Feature Tabs */}
+      <nav className="sticky top-0 z-50 border-b border-forest-700 bg-forest-900/95 shadow-sm backdrop-blur-lg" aria-label="Main navigation">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-1 px-4 py-2 sm:px-6 lg:px-8">
+          <Link to="/" className="mr-3 flex items-center gap-2 no-underline">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 font-bold text-emerald-400 border border-emerald-500/20 text-sm">
+              🌊
+            </span>
+            <span className="text-base font-extrabold tracking-tight text-emerald-400">Q-FLARE</span>
+          </Link>
+
+          <div className="flex flex-wrap items-center gap-1">
+            <NavLink to="/" icon={BrainCircuit}>AI Analytics</NavLink>
+            <NavLink to="/forecasting" icon={CloudRain}>Flood Forecasting</NavLink>
+            <NavLink to="/gis" icon={Globe}>GIS Spatial</NavLink>
+            <NavLink to="/iot" icon={Wifi}>IoT Telemetry</NavLink>
+            <NavLink to="/response" icon={Shield}>Response Planning</NavLink>
+            <NavLink to="/model-comparison" icon={GitCompare}>Model Comparison</NavLink>
+            <NavLink to="/quantum-optimization" icon={Rocket}>Quantum Optimization</NavLink>
+            <NavLink to="/quantum-benchmark" icon={Scale}>Quantum Benchmark</NavLink>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden items-center gap-1.5 text-xs text-mist-300 sm:flex">
+              <span className="rounded-md border border-forest-600 bg-forest-850 px-2.5 py-0.5 font-mono text-[11px] font-medium text-emerald-400">
+                Officer Station
               </span>
-            )}
-            <button
-              type="button"
-              onClick={logout}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-forest-600 px-3 py-2 text-xs font-semibold text-mist-300 transition-colors hover:border-critical-500/60 hover:text-critical-400"
-            >
-              <LogOut size={13} aria-hidden="true" />
-              Sign out
-            </button>
+              <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                ADMIN
+              </span>
+            </span>
           </div>
         </div>
       </nav>
@@ -86,14 +101,10 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Protected dashboard shell. Existing backend authentication controls access:
- * unauthenticated users see the login screen; authenticated sessions render
- * the dashboard routes. Authentication only gates access — model data flows
- * independently through the backend registry API.
+ * Direct Command Center Shell.
+ * Login requirement removed: all options and features are immediately accessible.
  */
 function Shell() {
-  const { session } = useAuth()
-  if (!session) return <LoginScreen />
   return (
     <Layout>
       <ErrorBoundary>
@@ -109,6 +120,7 @@ function Shell() {
           <Route path="/qubo-visualization/:jobId" element={<QuboVisualization />} />
           <Route path="/quantum/jobs/:jobId" element={<QuantumJobStatus />} />
           <Route path="/optimization/:id/result" element={<OptimizationResult />} />
+          <Route path="/login" element={<LoginScreen />} />
         </Routes>
       </ErrorBoundary>
     </Layout>

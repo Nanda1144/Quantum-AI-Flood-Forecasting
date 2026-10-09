@@ -1,47 +1,50 @@
 @import "tailwindcss";
 
 @theme {
-  /* ---- Q-FLARE Command Center palette ---- */
+  /* =========================================================================
+     Q-FLARE Government Quantum Command Center Palette
+     Official Government & Quantum Mission Theme: Pearl Cream, White & Sapphire Navy
+     ========================================================================= */
 
-  /* Deep forest green / dark olive backgrounds */
-  --color-forest-950: #050b08;
-  --color-forest-900: #081310;
-  --color-forest-850: #0c1a15;
-  --color-forest-800: #11241c;
-  --color-forest-700: #1a3329;
-  --color-forest-600: #26483a;
-  --color-forest-500: #35614e;
+  /* Pure Pearl Cream / Ivory / Porcelain White backgrounds */
+  --color-forest-950: #F7F5EE; /* Canvas background: warm regal cream */
+  --color-forest-900: #FFFFFF; /* Primary surface: pure crisp white */
+  --color-forest-850: #FAFAF7; /* Elevated card surface: light ivory */
+  --color-forest-800: #F1ECE0; /* Panel/section background: warm pearl */
+  --color-forest-700: #E3DFD2; /* Light subtle border: soft stone/cream */
+  --color-forest-600: #CFC7B4; /* Medium card border: stone/sand */
+  --color-forest-500: #ADA38D; /* Darker outline */
 
-  /* Emerald primary */
-  --color-emerald-300: #6ee7b7;
-  --color-emerald-400: #34d399;
-  --color-emerald-500: #10b981;
-  --color-emerald-600: #059669;
-  --color-emerald-700: #047857;
+  /* Government Quantum Sapphire / Royal Navy Blue */
+  --color-emerald-300: #1D4ED8; /* Vibrant Sapphire */
+  --color-emerald-400: #1E40AF; /* Deep Royal Navy */
+  --color-emerald-500: #1E3A8A; /* Sovereign Ashoka Blue */
+  --color-emerald-600: #172554;
+  --color-emerald-700: #0F172A;
 
-  /* Cyan/teal AI accent */
-  --color-ai-200: #a5f3fc;
-  --color-ai-300: #67e8f9;
-  --color-ai-400: #22d3ee;
-  --color-ai-500: #06b6d4;
-  --color-ai-600: #0891b2;
+  /* Quantum Cyan / AI Teal Accent */
+  --color-ai-200: #0284C7;
+  --color-ai-300: #0369A1;
+  --color-ai-400: #0E7490;
+  --color-ai-500: #0D9488;
+  --color-ai-600: #115E59;
 
-  /* Amber warning */
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-600: #d97706;
+  /* Government Amber / Golden State Seal */
+  --color-amber-400: #D97706;
+  --color-amber-500: #B45309;
+  --color-amber-600: #92400E;
 
-  /* Red critical */
-  --color-critical-400: #f87171;
-  --color-critical-500: #ef4444;
-  --color-critical-600: #dc2626;
+  /* Critical Alert Red */
+  --color-critical-400: #DC2626;
+  --color-critical-500: #B91C1C;
+  --color-critical-600: #991B1B;
 
-  /* Typography */
-  --color-mist-50: #f8fafc;
-  --color-mist-100: #e2e8f0;
-  --color-mist-300: #cbd5e1;
-  --color-mist-500: #94a3b8;
-  --color-mist-600: #64748b;
+  /* High-Contrast Government Typography */
+  --color-mist-50: #0F172A;  /* Deepest Charcoal Ink (headings) */
+  --color-mist-100: #1E293B; /* Dark Slate (body text) */
+  --color-mist-300: #334155; /* Slate (secondary text) */
+  --color-mist-500: #64748B; /* Medium Slate (captions) */
+  --color-mist-600: #94A3B8; /* Muted Slate (borders/labels) */
 
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
@@ -59,11 +62,11 @@ body,
 
 body {
   margin: 0;
-  background-color: var(--color-forest-900);
+  background-color: var(--color-forest-950);
   background-image:
-    radial-gradient(1100px 500px at 85% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
-    radial-gradient(900px 480px at -10% 15%, rgba(34, 211, 238, 0.08), transparent 60%),
-    linear-gradient(180deg, var(--color-forest-950) 0%, var(--color-forest-900) 40%, var(--color-forest-850) 100%);
+    radial-gradient(1200px 600px at 85% -10%, rgba(30, 64, 175, 0.05), transparent 60%),
+    radial-gradient(900px 480px at -10% 15%, rgba(13, 148, 136, 0.04), transparent 60%),
+    linear-gradient(180deg, #FBFBF9 0%, var(--color-forest-950) 40%, #EFECE1 100%);
   background-attachment: fixed;
   color: var(--color-mist-50);
   font-family: var(--font-sans);
@@ -71,66 +74,65 @@ body {
 }
 
 ::selection {
-  background-color: rgba(16, 185, 129, 0.35);
+  background-color: rgba(30, 64, 175, 0.18);
+  color: #0F172A;
 }
 
-/* Thin custom scrollbar for the dark UI */
+/* Custom scrollbar for government cream/white interface */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-forest-900);
+  background: var(--color-forest-950);
 }
 ::-webkit-scrollbar-thumb {
   background: var(--color-forest-600);
   border-radius: 6px;
-  border: 2px solid var(--color-forest-900);
+  border: 2px solid var(--color-forest-950);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-emerald-600);
+  background: var(--color-emerald-400);
 }
 
-/* ---- Glassmorphism card surface ---- */
+/* ---- Glassmorphism card surface in Cream/White ---- */
 .glass-card {
-  background: linear-gradient(160deg, rgba(26, 51, 41, 0.55) 0%, rgba(12, 26, 21, 0.55) 100%);
-  border: 1px solid rgba(53, 97, 78, 0.35);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(207, 199, 180, 0.7);
   border-radius: 1rem;
   box-shadow:
-    0 1px 0 rgba(240, 255, 250, 0.04) inset,
-    0 12px 32px -20px rgba(0, 0, 0, 0.7);
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 4px 20px -2px rgba(30, 41, 59, 0.05),
+    0 1px 3px 0 rgba(30, 41, 59, 0.04);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
 
 .glass-card--glow {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(30, 64, 175, 0.3);
   box-shadow:
-    0 1px 0 rgba(240, 255, 250, 0.05) inset,
-    0 0 40px -14px rgba(16, 185, 129, 0.45),
-    0 12px 32px -20px rgba(0, 0, 0, 0.7);
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 0 25px -4px rgba(30, 64, 175, 0.12),
+    0 8px 24px -4px rgba(30, 41, 59, 0.08);
 }
 
-/* Subtle focus ring for keyboard navigation */
+/* Focus ring for keyboard navigation */
 :focus-visible {
   outline: 2px solid var(--color-emerald-400);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* ---- Quantum command-center backdrop (circuit lattice + orbs) ---- */
-/*
- * Rendered by <QuantumCircuitBackground/> as a fixed layer behind page content
- * (z-index:-1 keeps it under normal-flow elements). Subtle by design: opacity
- * is intentionally low so the glass cards stay legible.
- */
+/* ---- Quantum command-center backdrop (circuit lattice + subtle orbs) ---- */
 .quantum-circuit-grid {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(53, 97, 78, 0.13) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 97, 78, 0.13) 1px, transparent 1px);
+    linear-gradient(rgba(30, 58, 138, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 58, 138, 0.04) 1px, transparent 1px);
   background-size: 46px 46px;
   animation: grid-pan 70s linear infinite;
   mask-image: radial-gradient(ellipse 95% 80% at 50% 0%, rgba(0, 0, 0, 0.9) 30%, transparent 95%);
@@ -150,34 +152,36 @@ body {
   height: 520px;
   top: -140px;
   right: -120px;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.14), transparent 65%);
+  background: radial-gradient(circle, rgba(30, 64, 175, 0.06), transparent 65%);
 }
 .quantum-orb--cyan {
   width: 460px;
   height: 460px;
   bottom: -160px;
   left: -140px;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.10), transparent 65%);
+  background: radial-gradient(circle, rgba(13, 148, 136, 0.05), transparent 65%);
   animation-delay: -4s;
 }
 
-/* Circuit trace plates (SVG paths) — a slow dash flow reads as pulses moving */
+/* Circuit trace plates */
 .quantum-trace {
+  stroke: rgba(30, 64, 175, 0.4);
   stroke-dasharray: 5 17;
   animation: trace-flow 7s linear infinite;
   vector-effect: non-scaling-stroke;
 }
 .quantum-trace--fast {
+  stroke: rgba(13, 148, 136, 0.45);
   stroke-dasharray: 3 11;
   animation-duration: 4.5s;
 }
 .quantum-node {
+  fill: #1E40AF;
   animation: node-pulse 3.2s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: center;
 }
 
-/* Live pipeline running state */
 @keyframes grid-pan {
   to {
     background-position: 46px 46px;
@@ -186,12 +190,12 @@ body {
 @keyframes orb-breathe {
   0%,
   100% {
-    opacity: 0.55;
+    opacity: 0.5;
     transform: scale(1);
   }
   50% {
-    opacity: 0.9;
-    transform: scale(1.1);
+    opacity: 0.8;
+    transform: scale(1.08);
   }
 }
 @keyframes trace-flow {
@@ -202,12 +206,12 @@ body {
 @keyframes node-pulse {
   0%,
   100% {
-    opacity: 0.25;
-    transform: scale(0.85);
+    opacity: 0.35;
+    transform: scale(0.9);
   }
   50% {
-    opacity: 1;
-    transform: scale(1.25);
+    opacity: 0.9;
+    transform: scale(1.15);
   }
 }
 @keyframes stage-enter {
@@ -224,13 +228,13 @@ body {
   animation: stage-enter 0.35s ease-out both;
 }
 
-/* Emerald-native range sliders used by the objective-weight controls */
+/* Precision Range sliders in Government Quantum Navy/Teal */
 .quantum-slider {
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
   border-radius: 9999px;
-  background: linear-gradient(90deg, var(--color-emerald-600), var(--color-ai-500) var(--quantum-fill, 50%), var(--color-forest-600) var(--quantum-fill, 50%));
+  background: linear-gradient(90deg, var(--color-emerald-400), var(--color-ai-400) var(--quantum-fill, 50%), var(--color-forest-700) var(--quantum-fill, 50%));
   outline-offset: 4px;
 }
 .quantum-slider::-webkit-slider-thumb {
@@ -239,22 +243,21 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: var(--color-mist-50);
-  border: 2px solid var(--color-emerald-500);
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  background: #FFFFFF;
+  border: 2px solid var(--color-emerald-400);
+  box-shadow: 0 0 8px rgba(30, 64, 175, 0.3);
   cursor: pointer;
 }
 .quantum-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: var(--color-mist-50);
-  border: 2px solid var(--color-emerald-500);
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  background: #FFFFFF;
+  border: 2px solid var(--color-emerald-400);
+  box-shadow: 0 0 8px rgba(30, 64, 175, 0.3);
   cursor: pointer;
 }
 
-/* Smooth reduced-motion support */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
