@@ -131,7 +131,7 @@ export class ForecastService {
       floodProbability: contract.flood_probability,
       riskLevel: contract.risk_level,
       predictedWaterLevel: contract.predicted_water_level,
-      forecastHorizon: contract.forecastHorizon ?? contract.forecast_horizon,
+      forecastHorizon: contract.forecast_horizon,
       modelId: contract.model_id,
       modelName: model?.name ?? contract.model_id,
       modelVersion: contract.model_version,
@@ -157,15 +157,15 @@ export class ForecastService {
 
   /** GET /api/forecast/latest — fetch most recent persisted forecast. */
   async getLatest(): Promise<ForecastResponse | null> {
-    const forecast = await this.forecastRepo.findLatest()
+    const forecast = await this.forecastRepo.getLatest()
     if (forecast === null) return null
     return toForecastResponse(forecast)
   }
 
   /** GET /api/forecast/history — fetch historical forecasts. */
   async getHistory(limit = 20): Promise<ForecastResponse[]> {
-    const list = await this.forecastRepo.listRecent(limit)
-    return list.map((f) => toForecastResponse(f))
+    const result = await this.forecastRepo.queryPredictions({ page: 1, limit })
+    return result.items.map((f: Forecast) => toForecastResponse(f))
   }
 
   /** GET /api/forecast/station/:id — typed state; the schema has no station FK. */

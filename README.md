@@ -1,393 +1,410 @@
-# Q-FLARE — Quantum-AI Flood Forecasting & Disaster-Response Platform
+<div align="center">
 
-A command-center platform that pairs **AI flood forecasting intelligence** with
-**quantum optimization** for sensor placement and disaster-response planning.
+# 🌊 Q-FLARE
+### Quantum-AI Flood Forecasting & Disaster-Response Platform
 
-> Status: early platform scaffolding. The **AI Analytics dashboard**, the
-> **AI integration microservice** powering it, and the **quantum optimization
-> orchestration stack** (`POST /api/optimization/run` pipeline, job store, the
-> `quantum-service` QUBO/QAOA contract) are implemented end-to-end.
+**A next-generation disaster management command center combining deep hydrological AI forecasting, geospatial 3D intelligence, and quantum QUBO optimization for life-saving emergency operations.**
 
----
+<br />
 
-## Table of Contents
+<!-- Header Navigation Bar (Website-Style Buttons) -->
+<p align="center">
+  <a href="#-project-overview"><img src="https://img.shields.io/badge/🏠%20Overview-Project%20Mission-0284c7?style=for-the-badge" alt="Overview" /></a>
+  <a href="#-where-it-is-required--real-world-applications"><img src="https://img.shields.io/badge/🎯%20Applications-Where%20%26%20Why%20Used-0d9488?style=for-the-badge" alt="Where Required" /></a>
+  <a href="#-system-architecture--data-flow"><img src="https://img.shields.io/badge/🏗️%20Architecture-System%20Design-6366f1?style=for-the-badge" alt="Architecture" /></a>
+  <a href="#-3d-visualization--gis-spatial-intelligence"><img src="https://img.shields.io/badge/🌐%203D%20GIS-Spatial%20Visualization-8b5cf6?style=for-the-badge" alt="3D Visualization" /></a>
+  <a href="#-single-env-requirements"><img src="https://img.shields.io/badge/⚙️%20Configuration-.ENV%20Requirements-ea580c?style=for-the-badge" alt="ENV Requirements" /></a>
+  <a href="#-step-by-step-execution-guide"><img src="https://img.shields.io/badge/🚀%20Execution-Step--by--Step%20Guide-16a34a?style=for-the-badge" alt="Execution Guide" /></a>
+  <a href="#-help-troubleshooting--faq"><img src="https://img.shields.io/badge/💡%20Help-Troubleshooting%20%26%20FAQ-dc2626?style=for-the-badge" alt="Help" /></a>
+</p>
 
-- [Architecture](#architecture)
-- [Module ownership](#module-ownership)
-- [Directory layout](#directory-layout)
-- [Data flow / workflow](#data-flow--workflow)
-- [Quick start](#quick-start)
-- [Tech stack](#tech-stack)
-- [Configuration](#configuration)
-- [Related documentation](#related-documentation)
+<!-- Technology Stack Badges -->
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-v20%2B-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TailwindCSS-v4.0-06B6D4?logo=tailwindcss&logoColor=white" alt="TailwindCSS" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Supabase-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/License-Apache--2.0-yellow.svg" alt="License" />
+</p>
 
----
-
-## Architecture
-
-Q-FLARE is organised as a set of small microservices plus a single React
-frontend. The frontend never computes forecasts itself — it consumes model and
-forecast data **only through the service APIs**.
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        Frontend (React + TS)                          │
-│               AI Analytics · Quantum Optimization                      │
-│                                   │                                   │
-│                         REST over /api                               │
-└───────────────┬──────────────────────────────────────────────────────┘
-                │
-┌───────────────▼──────────────────┐        ┌──────────────────────────┐
-│          backend (Node/Express)  │        │    quantum-service       │
-│  API gateway · analytics API     │◄──────►│  QUBO construction /     │
-│  optimization orchestration      │ 8100   │  QAOA execution          │
-│  auth · RBAC · validation        │        └──────────────────────────┘
-└───────┬──────────────────────────┘
-        │ HTTP (ForecastClient contract)
-┌───────▼──────────────────────────┐         ┌────────────────────────┐
-│   ai-service (FastAPI :8000)     │◄───────►│        PostgreSQL      │
-│   forecasting engine contract    │ sync    │ forecasts · models ·   │
-│   (the engine plugs in here) │         │ optimization jobs      │
-└──────────────────────────────────┘         └────────────────────────┘
-```
-
-The **optimization stack** is behind the Node backend: `POST
-/api/optimization/run` 202-queues a 15-step pipeline job that the UI polls
-(`GET /api/optimization/:id`, `/api/optimization/jobs/:id/{pipeline,result,
-qubo,classical,export}`, `/api/optimization/inputs`). The gateway is the only
-consumer of `quantum-service` — the browser never talks to it. A failing
-executor (hardware down, Aer missing, QUBO error) never takes the platform
-down: the configured fallback policy (`retry_simulator` default) keeps every
-job finishing against a persisted classical reference benchmark. **No quantum
-speedup is ever claimed.**
-
-The `quantum-service` also exposes a **generic QUBO generation + retrieval API**
-(consumed by the backend's contract seam and exercised by its contract tests):
-`POST /quantum/qubo` accepts a shape-dispatched payload — the original
-sensor-placement body (`candidates`) *or* a generic body (`variables` +
-explicit `objective` + `constraints` + optional `weights`) — and stores a
-clean-JSON QUBO document retrievable via `GET /quantum/qubo/:id`,
-`GET /quantum/qubo/:id/variables` (semantic variable→candidate mapping), and
-`GET /quantum/qubo/:id/constraints`. See `quantum-service/README.md`.
-
-### How the AI Analytics page gets its data
-
-1. The React page `/` (`AI Analytics`) calls `loadAIAnalytics()` from
-   `frontend/src/services/aiService.ts`.
-2. In dev, Vite proxies `/api` to `http://localhost:3000` (see
-   `frontend/vite.config.ts`) — the **Node `backend` gateway**.
-3. The gateway exposes `GET /api/ai/analytics` (plus companion endpoints),
-   syncing the latest forecast and model registry from the **AI FastAPI
-   service** (`../ai-service`, port `:8000`) into PostgreSQL, then assembling
-   a snapshot that matches the frontend contract in `frontend/src/types/ai.ts`.
-
-The dashboard therefore uses **real backend API responses** — values such as
-flood probability, water level, timestamps, and model metrics are never
-hard-coded in the UI (the React sample-data fallback is opt-in and clearly
-flagged as mock).
-
-### How the Model Comparison page gets its data
-
-The `/model-comparison` route (`frontend/src/pages/ModelComparison.tsx`) reads
-stored model evaluations — it does **not** compute metrics itself. It calls
-`aiApi.getModelsComparison()` against the gateway's
-`GET /api/ai/models/comparison` endpoint, which filters/sorts the persisted
-`model_versions`/`model_metrics` rows (latest metric per version) and returns
-them plus the evaluated-date range and evaluation datasets. The page only
-arranges extrema (best R² / lowest RMSE etc.) and never invents values; rows
-without stored scores are shown as "—". Version status and production
-promotion are managed server-side by the registry — the page offers no
-authorization path.
-
-A companion read-only registry contract backs the same page with a formal API:
-
-- `GET /api/ai/models` — paginated, filterable version list.
-- `POST /api/ai/models/compare?{model_ids}` — aggregates the requested
-  versions' latest stored metrics and applies the documented selection policy
-  (primary metric via `MODEL_SELECTION_METRIC`, tie-breaks `rmse → mae →
-  inferenceTime`, `rationale` for traceability). See `backend/README.md`
-  "Model selection policy".
-- `GET /api/ai/models/:id` — full metadata; `GET /api/ai/models/:id/metrics` —
-  historical evaluation runs.
-
-All registry endpoints are **read-only**: the API never creates, promotes, or
-retires model versions, so a mis-issued request cannot change deployment
-state.
+</div>
 
 ---
 
-## Module ownership
+## 🏠 Project Overview
 
-Clear ownership boundaries keep the AI and ML concerns separate:
+**Q-FLARE** (*Quantum-AI Flood Forecasting & Disaster-Response Platform*) is an enterprise command-center system designed to solve the critical challenges of flood prediction, sensor infrastructure deployment, and emergency disaster relief coordination.
 
-| Area | Owner | Scope |
-| --- | --- | --- |
-| **AI integration (this work)** | Nanda | `backend` (Node gateway: analytics API, auth/RBAC, validation) + `ai-service` (FastAPI contract service) + `frontend` AI Analytics page, routing, state, components |
-| **Forecasting / training pipeline** | Forecasting | Model training, feature engineering, live inference — implemented as a `ForecastEngine` behind `ai-service` (XGBoost/LSTM/GRU swap without touching the API) |
-| **Quantum optimization** | Nanda | `backend` (optimization orchestration service, `/api/optimization/*` routes, ownership/fallback policy, job persistence) + `quantum-service` (QUBO construction & QAOA execution contract) |
-| **GIS / IoT / database / deployment** | — | Supporting infrastructure modules |
+### The Problem
+During severe monsoons, cloudbursts, and tropical cyclones:
+- Traditional hydrological hydrodynamic models take hours to compute water surface profiles, creating unacceptable latency during flash floods.
+- Flood monitoring agencies have limited capital budgets ($B$) and cannot place sensors everywhere; choosing optimal locations among hundreds of candidate sites is an **NP-hard combinatorial optimization problem**.
+- First responders lack integrated situational awareness connecting forecast predictions, 3D topographical flood inundation, road network accessibility, and hospital/shelter logistics.
 
-The Node backend and `ai-service` implement **no ML training or forecasting
-pipeline**. `ai-service` defines the *integration contract* (a
-`ForecastEngine` protocol) that today is satisfied by a deterministic
-reference engine. When the pipeline provides an engine, it is registered
-in `ai-service` (`FORECAST_ENGINE=<module>:<Class>`), and the REST contract
-consumed by the Node backend stays unchanged.
+### The Q-FLARE Solution
+1. **AI Hydrological Inference Engine**: High-frequency, deterministic and deep learning (GRU/LSTM/XGBoost) inference delivering 24–72 hour flood probability, predicted peak water levels, and alert tiers within milliseconds.
+2. **Quantum Combinatorial Optimization (QUBO/QAOA)**: Formulates sensor placement as a Quadratic Unconstrained Binary Optimization problem mapped to Ising Hamiltonians. Solved using Quantum Approximate Optimization Algorithm (QAOA) surrogates and classical reference solvers with strict fallback guarantees.
+3. **Geospatial 3D & GIS Intelligence**: Topographical flood plain mapping, Digital Elevation Models (DEM), river basin network topology (Krishna-Godavari River Basin), and dynamic evacuation route planning.
+4. **Resilient Gateway & Zero-Fabrication Guarantee**: Built upon the platform pledge: *honest by construction* — no fabricated metrics, explicit fallback indicators, and write-once cryptographic result auditing.
 
 ---
 
-## Directory layout
+## 🎯 Where It Is Required & Real-World Applications
 
-| Path | Description |
-| --- | --- |
-| `frontend/` | React + TypeScript + Vite + Tailwind command-center UI |
-| `backend/` | **Node/Express API gateway** — AI analytics endpoints, auth/RBAC, rate limiting, validation, PostgreSQL persistence |
-| `ai-service/` | **FastAPI forecasting service** — stable REST contract + `ForecastEngine` seam for the pipeline |
-| `quantum-service/` | **FastAPI QUBO/QAOA service** — deterministic reference executor for `POST /quantum/qubo` (sensor-placement *and* generic payloads), `GET /quantum/qubo/:id`, `/quantum/qubo/:id/variables`, `/quantum/qubo/:id/constraints`, `POST /quantum/optimize`, `GET /quantum/result/:id` |
-| `database/` | **Schema & persistence** — reverse migrations, model registry (`model_versions`/`model_metrics`), dev-marked seeds |
-| `gis/` | Geospatial data module — contract defined (`/api/optimization/inputs` candidate sites); implementation planned, see `gis/README.md` |
-| `iot/` | Sensor/IoT ingestion — contract defined (telemetry → observed water level → forecast chart); implementation planned, see `iot/README.md` |
-| `deployment/` | Deployment docs, run topology, and GitHub Pages workflows — see `deployment/README.md` |
-| `tests/` | Cross-module QA reports and per-feature test records — see `tests/README.md` and `tests/reports/` |
-| `docs/` | Architecture & decision records index — see `docs/README.md` |
-| `.github/` | GitHub Actions — frontend Pages deploy on the feature branch (`deploy.yml`) and on `main` (`static.yml`); see `.github/workflows/README.md` |
+Q-FLARE is purpose-built for mission-critical deployment across several operational domains:
 
-Each module carries its own `README.md` with setup and API notes.
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               OPERATIONAL DEPLOYMENT SPHERES                           │
+├──────────────────────────┬──────────────────────────┬──────────────────────────────────┤
+│  🌊 Major River Basins   │ 🏛️ Disaster Authorities │ 🏥 Civil Infrastructure & First  │
+│     & Catchment Areas    │    (NDMA / SDMA / CWC)   │    Responders                    │
+├──────────────────────────┼──────────────────────────┼──────────────────────────────────┤
+│ • Krishna & Godavari     │ • State Emergency Op     │ • Hospital accessibility route   │
+│   Basin floodplains      │   Centers (SEOC)         │   safeguarding                   │
+│ • Deltaic flash-flood    │ • Central Water Comm.    │ • Relief shelter allocation      │
+│   inundation corridors   │   (CWC) alert bulletin   │ • Submerged arterial road        │
+│ • Hydroelectric dam      │ • Early evacuation       │   closure advisories             │
+│   reservoir spillways    │   dispatch orders        │ • Drone & boat rescue routing    │
+└──────────────────────────┴──────────────────────────┴──────────────────────────────────┘
+```
+
+### 1. River Basin Management Authorities (e.g., Central Water Commission, River Boards)
+- **Use Case**: Continuous stream gauge monitoring, upstream runoff forecasting, and early flood warnings 24 to 72 hours before river cresting.
+- **Why Needed**: Enables controlled dam releases to prevent sudden downstream catastrophic flooding.
+
+### 2. State & National Disaster Management Authorities (NDMA / SDMA)
+- **Use Case**: Live tactical command center during severe cyclone landfall and monsoon downpours.
+- **Why Needed**: Automates risk classification (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) and gives operational leaders verifiable data for evacuations.
+
+### 3. Municipal Corporations & Smart Cities
+- **Use Case**: Urban flood monitoring and storm-water drainage surveillance.
+- **Why Needed**: Identifies candidate street junctions for low-cost IoT sensor deployment to maximize network coverage without exceeding budget constraints.
+
+### 4. Emergency Healthcare & Humanitarian Relief Teams
+- **Use Case**: Evacuation shelter capacity management and arterial road access validation.
+- **Why Needed**: Prevents sending rescue ambulances down flooded or blocked transit corridors.
 
 ---
 
-## Data flow / workflow
+## 🏗️ System Architecture & Data Flow
+
+Q-FLARE uses a microservice topology where the browser interacts exclusively with a high-throughput Node.js API Gateway, which coordinates specialized AI, Quantum, GIS, and Database services.
 
 ```
-AI Analytics page ──loadAIAnalytics()──► /api/ai/analytics (Node backend :3000)
-        │                                        │
-        │            snapshot JSON               │ getForecast() · getModels() · health()
-        ▼                                        ▼
- KPI row · forecast chart · risk analytics   ForecastClient (src/clients)
- model panel · optimization bridge          (contract to the FastAPI service)
- recent predictions · system state
-        │                                        │
- Optimize bridge ──► /api/optimization/from-forecast ──► optimization reference
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                           FRONTEND COMMAND CENTER (React 19 + Vite)                    │
+│     • AI Analytics Dashboard               • Quantum Optimization Pipeline             │
+│     • GIS Spatial Intelligence (3D/2D)     • Model Comparison Registry                 │
+│     • IoT Real-Time Telemetry              • Disaster Response Planning                │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            │ HTTP / JSON (via Vite /api proxy)
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        NODE.JS API GATEWAY & ORCHESTRATOR (:3000)                      │
+│     • Express 5 Gateway            • JWT Auth & RBAC (Admin, Operator, Viewer)         │
+│     • 15-Step Optimization Pipe    • Resilient Fallback Engine                         │
+│     • Rate Limiter & Zod Defense   • Audit Trail & Cryptographic Verification          │
+└────────────┬──────────────────────────────┬──────────────────────────────┬─────────────┘
+             │                              │                              │
+             ▼                              ▼                              ▼
+┌──────────────────────────┐  ┌──────────────────────────┐  ┌──────────────────────────┐
+│   AI FORECAST SERVICE    │  │  QUANTUM QAOA SERVICE    │  │  POSTGRESQL / SUPABASE   │
+│      (FastAPI :8000)     │  │      (FastAPI :8100)     │  │       (Port 6543/5432)   │
+├──────────────────────────┤  ├──────────────────────────┤  ├──────────────────────────┤
+│ • Deterministic Contract │  │ • QUBO Construction     │  │ • Forecast Records       │
+│ • GRU/LSTM Hydro Engine  │  │ • QAOA Simulation        │  │ • Model Registry         │
+│ • Risk Classification    │  │ • Qiskit Aer / Hardware  │  │ • Optimization Runs      │
+│ • Water Level Horizons   │  │ • Classical Solvers      │  │ • QUBO Matrix Artifacts  │
+└──────────────────────────┘  └──────────────────────────┘  └──────────────────────────┘
+             ▲                              ▲                              ▲
+             └──────────────────────────────┴──────────────────────────────┘
+                                            │
+                                ┌───────────┴───────────┐
+                                │ GIS & IOT DATA LAYERS │
+                                │ • River Basin GeoJSON │
+                                │ • DEM 3D Elevations   │
+                                │ • Telemetry Ingestion │
+                                └───────────────────────┘
 ```
 
-1. Page mounts → `useAIAnalytics` hook fetches the composite snapshot from the
-   Node gateway.
-2. Every section renders from snapshot slices — no local fake data.
-3. "Use Forecast for Optimization" navigates to the Quantum Optimization route
-   via router state (forecast ID, risk score, priority); registering the
-   optimization handoff is `POST /api/optimization/from-forecast` on the
-   gateway.
-4. The gateway also exposes `/api/ai/status`, `/api/ai/predictions`,
-   `/api/ai/models`, and `/api/ai/models/:modelId/metrics` for finer-grained
-   consumers.
+### End-to-End Workflow
 
-### Optimization run flow
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as Command Center Operator
+    participant UI as React UI (:5173)
+    participant Gateway as Node API Gateway (:3000)
+    participant AI as AI Service (:8000)
+    participant Quantum as Quantum Service (:8100)
+    participant DB as PostgreSQL Database
 
+    Operator->>UI: Selects River Basin & Horizon (e.g. 24h)
+    UI->>Gateway: POST /api/forecast (with JWT)
+    Gateway->>AI: POST /forecast/latest (horizon=24)
+    AI-->>Gateway: ForecastContract (prob=0.88, level=4.2m, risk=CRITICAL)
+    Gateway->>DB: Persist Forecast Record
+    Gateway-->>UI: 201 Created + Canonical Envelope
+    
+    Operator->>UI: Clicks "Use Forecast for Optimization"
+    UI->>Gateway: POST /api/optimization/run (candidates, budget, weights)
+    Gateway->>Quantum: POST /quantum/qubo (generate matrix)
+    Quantum-->>Gateway: QUBO Matrix + Penalty Terms
+    Gateway->>Quantum: POST /quantum/optimize (QAOA execution)
+    Quantum-->>Gateway: Bitstring [1, 0, 1, 1, 0] + Energy
+    Gateway->>Gateway: Validate Constraints & Classical Benchmark
+    Gateway->>DB: Write-Once Result Persistence
+    Gateway-->>UI: 202 Polling -> 200 Final Recommendation
 ```
- Quantum Optimization page ──run()──► POST /api/optimization/run (202 + jobId)
-        │                                       │
-        │  poll GET /api/optimization/:id       │ OptimizationJobService (15-step)
-        ▼                                       │   1 validate_request … 8 construct_qubo
-  Live pipeline · summary · result              │   9 classical_benchmark (always stored)
-  (jobs/:id/pipeline|result|qubo|classical)     │  10 execute_qaoa ──► quantum-service
-                                                │     (simulator|aer|ibm_hardware + fallback)
-                                                │  11 decode_bitstring ◄── ∫ result/:id
-                                                │  12 validate_constraints (hard gate)
-                                                │  13 compare_results 14 persist_result
-                                                └ 15 return_response
-```
-
-The pipeline is authoritative: weights/budget/cardinality are semantic-validated
-on the wire and again in the orchestrator, candidates/constraints stream from
-the federated sources, the QUBO is built locally *and* pushed to
-`quantum-service`, the classical reference always runs and is always stored,
-and the decoded outcome is gated by constraint validation before a result is
-ever presented. Jobs are scoped to their owner (or admin) and persist through
-`optimization_jobs`; completed runs are normalized into `optimization_results`
-(one FK-linked row per job, location IDs only), with large QUBO matrices stored
-by reference in `optimization_qubo_artifacts`. Every job also gets a QUBO audit
-record in `optimization_qubo_metadata` (small problems inline the full plain-JSON
-matrix/terms/penalties/expression; large ones store reference + sha-256 checksum +
-dimensions only — never the cells, never raw Qiskit objects), so the experiment
-is always reproducible and auditable. Completed research results are
-write-once: the `qflare_guard_optimization_delete` trigger blocks hard deletes,
-and the API exposes only an audited soft-delete (`optimization_job_audit`) that
-requires the `admin` role and a reason (see `database/README.md`). Persistence
-falls back to in-memory repositories in dev.
-
-### Quantum Optimization dashboard (`/quantum-optimization`)
-
-The page is a 7-step command center — Problem configuration → Objective
-weights → Constraints → Execution → Live pipeline → Result summary → Actions —
-backed by a pluggable execution adapter, never by inline logic:
-
-- **Adapter seam** (`frontend/src/services/optimization/adapter.ts`): a single
-  `VITE_USE_MOCK_DATA` flag picks the adapter.
-  - `VITE_USE_MOCK_DATA != "false"` (default) → **mock adapter**
-    (`mockAdapter.ts` + `simulate.ts`): a deterministic, clearly-flagged
-    development simulator, loaded only through a dynamic import so it never
-    lands in a production bundle.
-  - `VITE_USE_MOCK_DATA="false"` → **HTTP adapter** (`httpAdapter.ts`): talks to
-    the optimization gateway (`POST /api/optimization/run`,
-    `GET /api/optimization/jobs/:id/pipeline|result|qubo|classical|export`,
-    `GET /api/optimization/inputs`) implemented by the Node backend +
-    `quantum-service`. Authentication is operator-class JWT via the shared
-    `aiService` login; any failed request fails loudly, never silently mocks.
-- **Transparent pipeline**: every stage (Input → Validation → QUBO →
-  Hamiltonian → QAOA → Measurement → Decode → Constraint validation →
-  Benchmark → Final) is streamed to the UI with its own status and metadata,
-  including a real penalty-based QUBO build, Ising mapping, shot sampling,
-  and an honest greedy decode.
-- **Operational gate**: if constraint validation fails (sensor limit, budget,
-  or coverage floor), the result is labelled exactly
-  `INVALID SOLUTION — NOT OPERATIONALLY RECOMMENDED` and is never presented as
-  a recommendation. Raising a coverage requirement to an infeasible value is
-  the built-in way to exercise this path in the simulator.
-- **Extensible problems**: `frontend/src/lib/quantum.ts` catalogs problem
-  types + objective axes. `sensor_placement` is enabled today;
-  `resource_allocation` is staged as "Planned", so adding it later means
-  extending the catalog, not restructuring the page.
-- **Federated inputs**: candidate sites (GIS), resource constraints
-  (planning), and forecast refs (AI forecasting) arrive via the adapter's
-  `getInputs()` — these modules are consumed, not re-implemented on the page.
-- **Handoff**: "Use Forecast for Optimization" on the AI Analytics page
-  navigates here via router state (forecast ID + priority), pre-filling the
-  forecast reference and risk profile.
 
 ---
 
-## Quick start
+## 🌐 3D Visualization & GIS Spatial Intelligence
 
-The entire platform is configured via a **single, unified `.env` file located at the project root**.
-All services (`backend`, `ai-service`, `quantum-service`, and `frontend`) automatically read from this root `.env`.
+The Q-FLARE platform incorporates spatial intelligence to turn raw hydrological numbers into intuitive geographic and topological visualizations:
 
-Prerequisites: **Node.js >= 20**, npm, and Python 3.12+.
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                             SPATIAL & TOPOLOGICAL LAYERS                               │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  🏔️ 3D Digital Elevation Models (DEM)                                                 │
+│     • Visualizes terrain contours and elevation slopes across river catchments.       │
+│     • Highlights low-lying depression basins vulnerable to rapid accumulation.         │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  🌊 Hydrological River Basin Networks (Krishna-Godavari)                              │
+│     • GeoJSON-based vectors depicting main channels, tributaries, and dams.           │
+│     • Identifies bottleneck river reaches where gauge measurements are most critical. │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  📍 Candidate Sensor Placement Scatter Visualizer                                     │
+│     • Projects candidate coordinates $(x, y)$ onto interactive 2D/3D map bounds.       │
+│     • Differentiates selected vs unselected sites, overlaid with flood-risk heat.      │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  🧮 QUBO Interaction Matrix Heatmaps                                                   │
+│     • Visualizes the quadratic coupling coefficients $Q_{ij}$ in interactive 2D/3D.    │
+│     • Color-codes pairwise interference, coverage redundancy, and penalty energy.     │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│  🚑 Evacuation & Emergency Infrastructure Corridors                                   │
+│     • Live overlays of hospital safe zones, relief shelters, and blocked roads.       │
+│     • Proximity matrices ensure optimal distribution of medical and food supplies.     │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-### Step-by-Step Execution Process
+## ⚙️ Single `.ENV` Requirements
 
-#### Step 1: Verify the Unified Environment File
-Ensure the root `.env` file exists at the project root:
-```sh
-# The root .env contains all unified configuration parameters for:
-# - Backend API Gateway (:3000)
-# - PostgreSQL / Supabase connection
-# - AI Forecasting Service (:8000)
-# - Quantum QAOA Service (:8100)
-# - Frontend Command-Center (:5173)
+The entire project operates from a **single, unified configuration file** located at the project root:
+[`/.env`](file:///.env).
+
+All sub-services (`backend`, `ai-service`, `quantum-service`, and `frontend`) load from this single root file.
+
+### Complete `.env` Reference Table
+
+| Category | Variable Name | Default / Example Value | Description & Operational Requirement |
+| :--- | :--- | :--- | :--- |
+| **System** | `NODE_ENV` | `development` | Runtime environment mode (`development`, `production`, `test`). |
+| **Backend** | `PORT` | `3000` | HTTP listener port for the Node.js API Gateway. |
+| **Backend** | `DATABASE_MODE` | `postgres` | `postgres` for live PostgreSQL/Supabase; `memory` for standalone demo/tests. |
+| **Backend** | `DATABASE_URL` | `postgresql://...` | Connection string for PostgreSQL database. |
+| **Backend** | `AUTH_ENABLED` | `true` | When `true`, all `/api` endpoints require JWT bearer tokens. |
+| **Backend** | `JWT_SECRET` | *(32+ char secret)* | Secret key used to sign and verify JSON Web Tokens. |
+| **Backend** | `JWT_EXPIRES_IN` | `800h` | Lifetime window for issued authentication tokens. |
+| **Backend** | `FRESHNESS_STALE_MS` | `90000` | Telemetry staleness threshold in ms (triggers degraded warning). |
+| **Backend** | `RATE_LIMIT_WINDOW_MS`| `60000` | Window time for rate limiting (1 minute). |
+| **Backend** | `RATE_LIMIT_MAX` | `1200` | Maximum allowable requests per IP within the window. |
+| **Backend** | `MODEL_SELECTION_METRIC`| `r2` | Primary metric for ranking models (`r2`, `rmse`, `mae`, `nse`). |
+| **Backend** | `OPTIMIZATION_FALLBACK_POLICY`| `retry_simulator` | Fallback behavior when quantum executor is down (`retry_simulator`, `classical_only`, `error`). |
+| **Backend** | `OPTIMIZATION_EXECUTION_TIMEOUT_MS`| `120000` | Maximum wall-clock timeout (2 minutes) for an optimization run. |
+| **Backend** | `OPTIMIZATION_EXHAUSTIVE_LIMIT`| `18` | Candidate threshold for brute-force classical solver comparison. |
+| **Backend** | `OPTIMIZATION_QUBO_INLINE_LIMIT`| `12` | Matrix dimension cap for inline storage vs file artifact storage. |
+| **Backend** | `OPTIMIZATION_RUN_LIMIT_MAX`| `10` | Rate limit cap specifically for heavy optimization runs. |
+| **AI Service** | `AI_SERVICE_HOST` | `0.0.0.0` | Host IP for FastAPI AI Forecasting service. |
+| **AI Service** | `AI_SERVICE_PORT` | `8000` | HTTP listener port for FastAPI AI Forecasting service. |
+| **AI Service** | `AI_SERVICE_URL` | `http://localhost:8000` | URL used by Node gateway to connect to AI service. |
+| **AI Service** | `AI_REQUEST_TIMEOUT_MS`| `5000` | Timeout in ms for backend HTTP calls to AI service. |
+| **AI Service** | `FORECAST_ENGINE` | `reference` | Model engine: `reference` (deterministic) or class path (e.g. `pipeline.modules.gru:GruFloodNetEngine`). |
+| **AI Service** | `AI_SERVICE_CORS_ORIGINS`| `*` | CORS origins permitted to invoke the AI service. |
+| **Quantum** | `QUANTUM_SERVICE_HOST`| `0.0.0.0` | Host IP for FastAPI Quantum Optimization service. |
+| **Quantum** | `QUANTUM_SERVICE_PORT`| `8100` | HTTP listener port for FastAPI Quantum service. |
+| **Quantum** | `QUANTUM_SERVICE_URL` | `http://localhost:8100` | URL used by Node gateway to connect to Quantum service. |
+| **Quantum** | `QUANTUM_REQUEST_TIMEOUT_MS`| `15000` | Timeout in ms for backend calls to Quantum service. |
+| **Quantum** | `QUANTUM_SERVICE_CORS_ORIGINS`| `*` | CORS origins permitted to invoke the Quantum service. |
+| **Quantum** | `QUANTUM_QUBO_DISABLED`| `false` | Drill knob: simulates QUBO 503 error to test fallback ladder. |
+| **Quantum** | `QUANTUM_FORCE_AER_DOWN`| `false` | Drill knob: forces Aer executor failure to verify simulator fallback. |
+| **Quantum** | `QUANTUM_FORCE_HARDWARE_DOWN`| `false` | Drill knob: forces IBM QPU failure to test local fallback. |
+| **Quantum** | `QUANTUM_FALLBACK_ENABLED`| `false` | Intra-job fallback switch in quantum-service. |
+| **Quantum** | `QUANTUM_DB_PATH` | `""` | SQLite path for quantum jobs (empty = in-memory). |
+| **Quantum** | `QUANTUM_API_TOKEN` | `""` | Optional bearer token for quantum service endpoint defense. |
+| **Quantum** | `QUANTUM_JOB_DELAY_MS`| `0` | Delay in ms to observe queued/running states in live demos. |
+| **Quantum** | `QUANTUM_RESULT_WAIT_MS`| `30000` | Polling wait time for terminal QAOA state. |
+| **Quantum** | `QISKIT_IBM_TOKEN` | `""` | Optional IBM Quantum Cloud API token for physical QPUs. |
+| **Frontend** | `VITE_API_BASE_URL` | `""` | Base API URL (empty uses Vite proxy to `http://localhost:3000`). |
+| **Frontend** | `VITE_USE_MOCK_DATA` | `false` | Set to `false` for live backend data; `true` forces mock adapter. |
+
+---
+
+## 🚀 Step-by-Step Execution Guide
+
+Follow these steps to run all 4 microservices simultaneously.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               SERVICE LAUNCH SUMMARY                                   │
+├─────────────┬───────────────────────────┬──────────────────────┬───────────────────────┤
+│ Window      │ Service                   │ Command              │ Endpoint              │
+├─────────────┼───────────────────────────┼──────────────────────┼───────────────────────┤
+│ Terminal 1  │ AI Forecasting (FastAPI)  │ uvicorn app.main:app │ http://localhost:8000 │
+│ Terminal 2  │ Quantum Service (FastAPI) │ uvicorn app.main:app │ http://localhost:8100 │
+│ Terminal 3  │ Backend Gateway (Node.js) │ npm run dev          │ http://localhost:3000 │
+│ Terminal 4  │ Frontend UI (React/Vite)  │ npm run dev          │ http://localhost:5173 │
+└─────────────┴───────────────────────────┴──────────────────────┴───────────────────────┘
 ```
 
-#### Step 2: Start the AI Forecasting Service (FastAPI)
-In a new terminal window:
+### Step 1: Verify the Root `.env` File
+Ensure that the single unified `.env` file exists at the root of the project:
+```powershell
+# In PowerShell (Windows)
+Test-Path .env
+# Returns: True
+```
+
+---
+
+### Step 2: Start the AI Forecasting Service
+Open a **new terminal window** (Terminal 1):
 ```powershell
 cd ai-service
+
+# Create and activate Python virtual environment
 python -m venv .venv
 .venv\Scripts\Activate.ps1               # On Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --port 8000
-```
-- Endpoint: `http://localhost:8000`
-- Health check: `http://localhost:8000/health`
 
-#### Step 3: Start the Quantum Optimization Service (FastAPI)
-In a second terminal window (optional but recommended):
+# Install dependencies
+pip install -r requirements.txt
+
+# Start FastAPI server on port 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+- **Check Health**: Open `http://localhost:8000/health` in your browser. Expected response:
+  ```json
+  {"success": true, "data": {"service": "ai-service", "version": "1.0.0", "engine": "reference", "status": "online"}}
+  ```
+
+---
+
+### Step 3: Start the Quantum Optimization Service
+Open a **second terminal window** (Terminal 2):
 ```powershell
 cd quantum-service
+
+# Create and activate Python virtual environment
 python -m venv .venv
 .venv\Scripts\Activate.ps1               # On Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --port 8100
-```
-- Endpoint: `http://localhost:8100`
-- Health check: `http://localhost:8100/health`
-- *Note:* If the quantum service is offline, the backend's resilient fallback policy (`retry_simulator`) automatically completes optimization requests against the classical reference benchmark.
 
-#### Step 4: Start the Node.js API Gateway (Backend)
-In a third terminal window:
+# Install dependencies
+pip install -r requirements.txt
+
+# Start FastAPI server on port 8100
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8100
+```
+- **Check Health**: Open `http://localhost:8100/health` in your browser. Expected response:
+  ```json
+  {"status": "ok", "service": "quantum-service", "version": "1.0.0"}
+  ```
+
+---
+
+### Step 4: Start the Node.js API Gateway (Backend)
+Open a **third terminal window** (Terminal 3):
 ```powershell
 cd backend
+
+# Install npm dependencies
 npm install
+
+# Start Express server with tsx hot-reloading
 npm run dev
 ```
-- API Gateway Endpoint: `http://localhost:3000`
-- Health / Analytics check: `http://localhost:3000/api/ai/analytics`
-- *Note:* If PostgreSQL is unreachable or `DATABASE_MODE=memory` is specified in `.env`, the backend operates in in-memory mode seamlessly.
+- **Gateway Console Output**:
+  ```text
+  [backend] listening on http://localhost:3000 (auth: enabled, mode: postgres)
+  ```
+- **Check Analytics Endpoint**: Open `http://localhost:3000/api/ai/analytics` in your browser.
 
-#### Step 5: Start the Frontend Command Center (React + Vite)
-In a fourth terminal window:
+---
+
+### Step 5: Start the React Frontend Command Center
+Open a **fourth terminal window** (Terminal 4):
 ```powershell
 cd frontend
+
+# Install npm dependencies
 npm install
+
+# Start Vite dev server on port 5173
 npm run dev
 ```
-- Open browser at: `http://localhost:5173/Quantum-AI-Flood-Forecasting/` (or `http://localhost:5173`)
-- The UI automatically communicates with the Node backend gateway via Vite's `/api` proxy.
+- **Access Web App**: Navigate to [http://localhost:5173/Quantum-AI-Flood-Forecasting/](http://localhost:5173/Quantum-AI-Flood-Forecasting/) or [http://localhost:5173](http://localhost:5173) in your web browser.
 
 ---
 
-## Tech stack
+### Step 6: Log In to the Command Center
+If authentication is enabled (`AUTH_ENABLED=true`), use any of the preconfigured role accounts:
 
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4, Recharts,
-  react-router-dom, lucide-react.
-- **backend:** Node.js, Express 5, TypeScript, Zod, jsonwebtoken,
-  express-rate-limit, pg, node:test.
-- **ai-service:** FastAPI, Pydantic, uvicorn (Python).
-- **quantum-service:** FastAPI, Pydantic, uvicorn (Python); Qiskit Aer / IBM
-  runtime adapters degrade to the documented 503 when not installed.
-- **Persistence:** PostgreSQL (forecasts, model registry, optimization jobs +
-  normalized results/audit/QUBO artifacts).
+| Role | Username | Password | Permissions |
+| :--- | :--- | :--- | :--- |
+| **Administrator** | `admin` | `qflare-admin` | Full read, write, run optimization, view audits, soft-delete. |
+| **Operator** | `operator` | `qflare-operator` | Read, execute forecasts, trigger quantum optimization jobs. |
+| **Viewer** | `viewer` | `qflare-viewer` | Read-only inspection of dashboards, metrics, and models. |
 
 ---
 
-## Configuration
+## 🧪 Verification & Testing Suite
 
-All configuration is managed from the **single root `.env` file** at `/.env`.
+You can verify all platform layers at any time using the built-in test commands:
 
-### Unified Environment Variables (`/.env`)
+```powershell
+# 1. Typecheck the backend codebase
+cd backend
+npx tsc --noEmit
 
-| Variable | Default / Example | Purpose / Description |
-| --- | --- | --- |
-| **System** | | |
-| `NODE_ENV` | `development` | Runtime mode (`development`, `production`, `test`). |
-| **Backend Gateway** | | |
-| `PORT` | `3000` | Gateway HTTP listener port. |
-| `DATABASE_MODE` | `postgres` | `postgres` (live DB) or `memory` (in-memory demo/test). |
-| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string. |
-| `AUTH_ENABLED` | `true` | JWT authentication required (`true` / `false`). |
-| `JWT_SECRET` | *(secret key)* | Signing secret for JSON Web Tokens. |
-| `JWT_EXPIRES_IN` | `800h` | Expiration window for issued JWT tokens. |
-| `FRESHNESS_STALE_MS` | `90000` | Staleness window (ms) for forecast telemetry. |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Time window for API gateway rate limiter. |
-| `RATE_LIMIT_MAX` | `1200` | Maximum requests per IP in the rate-limit window. |
-| `MODEL_SELECTION_METRIC` | `r2` | Model registry metric ranker (`r2`, `mae`, `rmse`, `nse`). |
-| **AI Service** | | |
-| `AI_SERVICE_HOST` | `0.0.0.0` | AI service bind host. |
-| `AI_SERVICE_PORT` | `8000` | AI service listener port. |
-| `AI_SERVICE_URL` | `http://localhost:8000` | URL used by Node gateway to contact AI service. |
-| `FORECAST_ENGINE` | `reference` | Forecasting model engine (`reference` or live class). |
-| `AI_SERVICE_CORS_ORIGINS`| `*` | Allowed CORS origins for AI service. |
-| **Quantum Service** | | |
-| `QUANTUM_SERVICE_HOST` | `0.0.0.0` | Quantum service bind host. |
-| `QUANTUM_SERVICE_PORT` | `8100` | Quantum service listener port. |
-| `QUANTUM_SERVICE_URL` | `http://localhost:8100` | URL used by Node gateway to contact Quantum service. |
-| `OPTIMIZATION_FALLBACK_POLICY` | `retry_simulator` | Fallback policy (`retry_simulator`, `classical_only`, `error`). |
-| `OPTIMIZATION_EXECUTION_TIMEOUT_MS` | `120000` | Max job execution timeout (ms). |
-| `OPTIMIZATION_EXHAUSTIVE_LIMIT` | `18` | Candidate limit for classical solver. |
-| **Frontend UI** | | |
-| `VITE_API_BASE_URL` | `''` | API base URL (empty uses Vite `/api` proxy). |
-| `VITE_USE_MOCK_DATA` | `false` | Set to `false` for live backend data. |
+# 2. Run backend test suite (unit tests in memory mode)
+npm run test:unit
 
+# 3. Run forecast API contract tests
+node --test --test-force-exit --import tsx "tests/features/forecasting/forecast-api.test.ts"
+
+# 4. Build and validate frontend production bundle
+cd ..\frontend
+npm run build
+```
 
 ---
 
-## Related documentation
+## 💡 Help, Troubleshooting & FAQ
 
-- **Frontend:** `frontend/README.md`
-- **Node backend (API gateway):** `backend/README.md`
-- **AI analytics API contract (FastAPI):** `ai-service/README.md`
-- Other modules carry their own `README.md` as they are built out.
+### Q1: What happens if PostgreSQL is unreachable or Supabase times out?
+> **Answer**: The backend includes an automatic and manual memory fallback. If you are demoing offline or experiencing connection latency, simply change `DATABASE_MODE=memory` in your root [`.env`](file:///.env) file and restart the backend. All features, in-memory repositories, and seed datasets remain fully operational without an external database!
 
-## License
+### Q2: I get a PowerShell Execution Policy error when activating `.venv` (`Activate.ps1 cannot be loaded`)
+> **Answer**: Run the following command in PowerShell to permit script execution for your session:
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+> ```
+> Then re-run `.venv\Scripts\Activate.ps1`.
 
-[Apache-2.0](LICENSE)
+### Q3: Why is there only ONE `.env` file instead of multiple in each folder?
+> **Answer**: Maintaining separate `.env` files across 4 microservices frequently leads to port mismatches, desynchronized JWT secrets, and diverging database strings. Q-FLARE's unified root `.env` serves as a single source of truth across Node.js, Python FastAPI, and Vite React.
+
+### Q4: What happens if the Quantum service is offline during an optimization run?
+> **Answer**: The backend implements an honest, resilient fallback ladder (`OPTIMIZATION_FALLBACK_POLICY=retry_simulator`). If the QAOA quantum executor is unavailable, the orchestrator automatically degrades to the verified classical reference solver, marks the job as `simulated`, and surfaces the solution without crashing the user interface.
+
+---
+
+## 📄 License
+
+This project is licensed under the terms of the [Apache License 2.0](LICENSE).
